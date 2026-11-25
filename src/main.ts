@@ -383,12 +383,17 @@ function customerIdentityMessage(match: CustomerIdentityMatch, context: 'invoice
     : 'توجد عدة سجلات محتملة لهذه البيانات. تحقق منها قبل إضافة الزبون.'
 }
 
+function normalizeInvoiceNumber(value: string): string {
+  const trimmed = value.trim()
+  return /^\d+$/.test(trimmed) ? trimmed.replace(/^0+(?=\d)/, '') : trimmed
+}
+
 function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceRecord | null {
-  const invoiceNumber = typeof data.invoiceNumber === 'string' ? data.invoiceNumber.trim() : ''
+  const invoiceNumber = typeof data.invoiceNumber === 'string' ? normalizeInvoiceNumber(data.invoiceNumber) : ''
   if (!invoiceNumber) return null
   const rootId = typeof data.rootId === 'string' && data.rootId.trim() ? data.rootId.trim() : id
   const rootInvoiceNumber = typeof data.rootInvoiceNumber === 'string' && data.rootInvoiceNumber.trim()
-    ? data.rootInvoiceNumber.trim()
+    ? normalizeInvoiceNumber(data.rootInvoiceNumber)
     : invoiceNumber
   const rows = Array.isArray(data.rows) ? data.rows.map((row) => {
     const item = row && typeof row === 'object' ? row as Record<string, unknown> : {}
@@ -1794,7 +1799,7 @@ function getFollowingInvoiceNumber(currentNumber: unknown) {
 }
 
 function formatInvoiceNumber(number: number) {
-  return String(number).padStart(5, '0')
+  return String(number)
 }
 
 async function getInvoiceNumberCandidate(ownerId: string): Promise<string> {
