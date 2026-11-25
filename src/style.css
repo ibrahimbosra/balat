@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
 
 :root {
   font-family: 'Cairo', sans-serif;
@@ -199,7 +199,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .list-head .add-button:active { transform: translateY(1px); }
 .list-head .add-button:focus-visible { outline: 3px solid rgba(0,125,121,.28); outline-offset: 2px; }
 .list-head { display: flex; align-items: end; justify-content: space-between; margin: 8px 0 8px; }
-.list-head h1 { margin: 0; color: var(--ink); font-size: 27px; }
+.list-head h1 { margin: 0; color: var(--ink); font-size: 27px; transform: translateX(-12px); }
 .list-head h1 span {
   display: inline-grid;
   min-width: 34px;
@@ -2265,6 +2265,8 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
 
 @media (max-width: 599px) {
   .topbar { grid-template-columns: minmax(0,1fr) 42px 42px; }
+  .list-head h1 { font-size: 15px; white-space: nowrap; }
+  .list-head h1 span { min-width: 28px; height: 28px; margin-inline-start: 5px; font-size: 11px; }
   .modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 20px 14px 16px; }
   .modal-backdrop:has(.invoice-history-modal) { padding: 8px; }
   .modal-backdrop:has(.invoice-history-modal) > .invoice-history-modal {
