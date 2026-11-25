@@ -193,7 +193,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .search-box input { min-width: 0; border: 0; padding: 11px 0; box-shadow: none; }
 .icon-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); }
 .add-button { border-color: var(--teal); background: var(--teal); color: #fff; }
-.list-head .add-button { display: inline-flex; width: auto; min-width: 128px; height: 44px; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; padding: 0 14px; box-shadow: 0 6px 14px rgba(0,125,121,.18); font-size: 13px; font-weight: 800; white-space: nowrap; transition: background .18s, box-shadow .18s, transform .18s; }
+.list-head .add-button { display: inline-flex; width: auto; min-width: 128px; height: 44px; align-items: center; justify-content: center; gap: 8px; margin-inline-end: 12px; border-radius: 12px; padding: 0 14px; box-shadow: 0 6px 14px rgba(0,125,121,.18); font-size: 13px; font-weight: 800; white-space: nowrap; transition: background .18s, box-shadow .18s, transform .18s; }
 .list-head .add-button svg { width: 18px; height: 18px; }
 .list-head .add-button:hover { background: #006d69; box-shadow: 0 8px 18px rgba(0,125,121,.24); }
 .list-head .add-button:active { transform: translateY(1px); }
