@@ -1360,7 +1360,6 @@ function renderInvoiceVersionsDialog(rootId: string) {
   modalSection.classList.add('invoice-history-modal')
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
 
-  const reopen = () => renderInvoiceVersionsDialog(rootId)
   element.querySelector<HTMLButtonElement>('#invoice-add-payment-entry')!.addEventListener('click', () => {
     element.remove()
     renderAddInvoicePaymentDialog(latest)
@@ -1388,31 +1387,8 @@ function renderInvoiceVersionsDialog(rootId: string) {
     renderInvoiceExportSnapshotDialog(latest)
   })
   element.querySelector<HTMLButtonElement>('#invoice-history-correct')!.addEventListener('click', () => {
-    if (!payments.length && getInvoicePaidTotal(latest) <= 0.00001) {
-      element.remove()
-      renderExportDialog({ sourceRecord: latest, correction: true })
-      return
-    }
-    const fullyPaid = status.key === 'paid'
     element.remove()
-    const confirmModal = modal(`
-      <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
-      <p class="eyebrow">تنبيه قبل التعديل</p>
-      <h2>${fullyPaid ? 'تعديل فاتورة مسددة بالكامل' : 'تعديل الفاتورة الأساسية'}</h2>
-      <p>${fullyPaid
-        ? 'هذه الفاتورة مسددة بالكامل. لا يمكن حفظ أي تعديل (خصم/خدمات/إلغاء خدمة) إذا جعل صافي الفاتورة أقل من إجمالي الدفعات المسجلة.'
-        : 'يمكنك تعديل الخصم أو الخدمات من الفاتورة الأساسية. لا يمكن حذف خدمة نهائيًا، لكن يمكنك إلغاءها لتظهر مشطوبة ولا تُحتسب ضمن الإجمالي. لن يُحفظ التعديل إذا أصبح الصافي أقل من إجمالي الدفعات.'}</p>
-      <div class="modal-actions">
-        <button class="secondary-button" type="button" id="cancel-correct-base">إلغاء</button>
-        <button class="primary-button" type="button" id="confirm-correct-base">متابعة التعديل</button>
-      </div>`)
-    const closeConfirm = () => { confirmModal.remove(); reopen() }
-    confirmModal.querySelector('.modal-close')!.addEventListener('click', closeConfirm)
-    confirmModal.querySelector('#cancel-correct-base')!.addEventListener('click', closeConfirm)
-    confirmModal.querySelector('#confirm-correct-base')!.addEventListener('click', () => {
-      confirmModal.remove()
-      renderExportDialog({ sourceRecord: latest, correction: true })
-    })
+    renderExportDialog({ sourceRecord: latest, correction: true })
   })
 }
 
@@ -4252,12 +4228,14 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
   const modified = new Set<string>()
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
-    <p class="eyebrow">${options?.correction ? 'تعديل فاتورة' : 'تجهيز فاتورة'}</p>
-    <h2>${options?.correction ? `تصحيح الفاتورة رقم ${escapeHtml(correctionInvoiceNumber)}` : 'تجهيز نافذة فاتورة'}</h2>
-    <div class="export-tabs">
-      <button class="active" type="button" data-export-tab="invoice">حساب فاتورة</button>
-      <button type="button" data-export-tab="services">الخدمات</button>
-    </div>
+    ${options?.correction
+      ? `<h2>تصحيح حساب الفاتورة رقم ${escapeHtml(correctionInvoiceNumber)}</h2>`
+      : `<p class="eyebrow">تجهيز فاتورة</p>
+        <h2>تجهيز نافذة فاتورة</h2>
+        <div class="export-tabs">
+          <button class="active" type="button" data-export-tab="invoice">حساب فاتورة</button>
+          <button type="button" data-export-tab="services">الخدمات</button>
+        </div>`}
     <div id="export-services-panel" hidden class="hidden">
       <div class="export-service-list"></div>
       <div class="export-summary" aria-live="polite"></div>
