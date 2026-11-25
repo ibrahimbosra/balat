@@ -2342,8 +2342,14 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     width: calc(100% + 12px);
     padding-left: 12px;
   }
+  .modal-backdrop:has(.settings-tabs) {
+    padding: 8px;
+  }
+  .modal-backdrop:has(.settings-tabs) > .modal {
+    width: 100%;
+    max-width: none;
+  }
   .modal:has(.settings-tabs) {
-    width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
     max-height: calc(100dvh - 16px);
     border-radius: 18px;

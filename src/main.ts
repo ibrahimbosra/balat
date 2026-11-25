@@ -960,10 +960,10 @@ function renderCustomerEditor(existing?: Customer) {
     <p class="eyebrow">${existing ? 'تعديل الزبون' : 'زبون جديد'}</p>
     <h2>${existing ? escapeHtml(existing.name) : 'إضافة زبون'}</h2>
     <form id="customer-form" class="service-form customer-form">
-      <label>اسم الزبون<input name="name" maxlength="100" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="اسم الزبون"></label>
-      <label>رقم الهاتف<input name="phone" type="tel" maxlength="30" value="${existing ? escapeHtml(existing.phone) : ''}" placeholder="رقم الهاتف"></label>
-      <label>العنوان<input name="address" maxlength="150" value="${existing ? escapeHtml(existing.address) : ''}" placeholder="عنوان الزبون"></label>
-      <label>الحي<input name="neighborhood" maxlength="100" value="${existing ? escapeHtml(existing.neighborhood) : ''}" placeholder="الحي"></label>
+      <label>اسم الزبون<input name="name" maxlength="20" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="اسم الزبون"></label>
+      <label>رقم الهاتف<input name="phone" type="tel" maxlength="15" value="${existing ? escapeHtml(existing.phone) : ''}" placeholder="رقم الهاتف"></label>
+      <label>العنوان<input name="address" maxlength="15" value="${existing ? escapeHtml(existing.address) : ''}" placeholder="عنوان الزبون"></label>
+      <label>الحي<input name="neighborhood" maxlength="15" value="${existing ? escapeHtml(existing.neighborhood) : ''}" placeholder="الحي"></label>
       <label class="customer-notes-field">ملاحظات<textarea name="notes" maxlength="400" rows="3" placeholder="ملاحظات">${existing ? escapeHtml(existing.notes) : ''}</textarea></label>
       <p class="modal-error" id="customer-error" role="alert" aria-live="polite"></p>
       <div class="modal-actions">
@@ -1025,6 +1025,16 @@ function renderCustomerEditor(existing?: Customer) {
     const neighborhood = neighborhoodInput.value.trim()
     const notes = String(data.get('notes') || '').trim()
     if (!name) { error.textContent = 'أدخل اسم الزبون.'; return }
+    const invalidField = [
+      { label: 'اسم الزبون', value: name, max: 20 },
+      { label: 'رقم الهاتف', value: phone, max: 15 },
+      { label: 'العنوان', value: address, max: 15 },
+      { label: 'الحي', value: neighborhood, max: 15 },
+    ].find(({ value, max }) => value.length > max)
+    if (invalidField) {
+      error.textContent = `يجب ألا يتجاوز ${invalidField.label} ${invalidField.max} حرفًا.`
+      return
+    }
     const identityMatch = findCustomerIdentityMatch(name, phone, address, neighborhood, existing?.id)
     if (identityMatch) {
       error.textContent = customerIdentityMessage(identityMatch, 'customer')
@@ -1438,7 +1448,7 @@ function renderServiceEditor(existing?: WorkService) {
     <p class="eyebrow">${existing ? 'تعديل الخدمة' : 'خدمة جديدة'}</p>
     <h2>${existing ? escapeHtml(existing.name) : 'إضافة خدمة'}</h2>
     <form id="service-form" class="service-form">
-      <label>اسم الخدمة<input name="name" maxlength="100" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="مثال: تركيب السيراميك"></label>
+      <label>اسم الخدمة<input name="name" maxlength="50" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="مثال: تركيب السيراميك"></label>
       <label>السعر<input name="price" type="number" min="0" step="0.01" inputmode="decimal" required value="${existing ? existing.price : ''}" placeholder="0.00"></label>
       <div class="custom-select-field" data-custom-select="unit" data-selected="${existing?.unit || 'SQM'}">
         <span class="custom-select-label-title">وحدة القياس</span>
@@ -1543,6 +1553,7 @@ function renderServiceEditor(existing?: WorkService) {
     const description = String(data.get('description') || '').trim()
     const error = element.querySelector<HTMLElement>('#service-error')!
     if (!name) { error.textContent = 'أدخل اسم الخدمة.'; return }
+    if (name.length > 50) { error.textContent = 'يجب ألا يتجاوز اسم الخدمة 50 حرفًا.'; return }
     if (!Number.isFinite(price) || price < 0) { error.textContent = 'أدخل سعرًا صحيحًا.'; return }
     if (!['SQM', 'LM', 'CBM', 'PCS', 'LOT', 'PROJECT', 'GROUP'].includes(unit)) {
       error.textContent = 'اختر وحدة القياس.'
@@ -2224,13 +2235,13 @@ function openImageExportPreview(imageScale: 1 | 2, rows: ExportServiceRow[]) {
     <h2>تأكيد بيانات التصدير</h2>
     <div class="export-preview-fields">
       <label>اسم الزبون
-        <input id="export-customer-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت لطباعته مع القائمة">
+        <input id="export-customer-name" type="text" maxlength="20" placeholder="أدخل اسم الزبون إن رغبت لطباعته مع القائمة">
       </label>
       <label>رقم هاتف الزبون
-        <input id="export-customer-phone" type="tel" maxlength="40" placeholder="أدخل رقم هاتف الزبون إن رغبت لطباعته مع القائمة">
+        <input id="export-customer-phone" type="tel" maxlength="15" placeholder="أدخل رقم هاتف الزبون إن رغبت لطباعته مع القائمة">
       </label>
       <label>عنوان الزبون
-        <input id="export-customer-address" type="text" maxlength="100" placeholder="أدخل عنوان الزبون إن رغبت لطباعته مع القائمة">
+        <input id="export-customer-address" type="text" maxlength="15" placeholder="أدخل عنوان الزبون إن رغبت لطباعته مع القائمة">
       </label>
     </div>
     <div class="export-preview-wrap">
@@ -3578,26 +3589,26 @@ function openInvoiceCustomerExportDialog(
         <div class="invoice-customer-name-field">
           <label for="invoice-customer-export-name">اسم الزبون <span>(مطلوب)</span></label>
           <div class="invoice-customer-name-control">
-            <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="اسم الزبون" autocomplete="name">
+            <input id="invoice-customer-export-name" type="text" maxlength="20" placeholder="اسم الزبون" autocomplete="name">
             <button type="button" class="invoice-customer-picker-trigger" aria-label="اختيار زبون مسجل" title="اختيار زبون مسجل">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"/></svg>
             </button>
           </div>
         </div>
         <label for="invoice-customer-export-phone">رقم هاتف الزبون <span>(اختياري)</span>
-          <input id="invoice-customer-export-phone" type="tel" maxlength="24" inputmode="tel" placeholder="رقم الهاتف" autocomplete="tel">
+          <input id="invoice-customer-export-phone" type="tel" maxlength="15" inputmode="tel" placeholder="رقم الهاتف" autocomplete="tel">
         </label>
         <label for="invoice-customer-export-address">عنوان الزبون <span>(اختياري)</span>
-          <input id="invoice-customer-export-address" type="text" maxlength="100" placeholder="عنوان الزبون">
+          <input id="invoice-customer-export-address" type="text" maxlength="15" placeholder="عنوان الزبون">
         </label>
         <label for="invoice-customer-export-neighborhood">الحي <span>(اختياري)</span>
-          <input id="invoice-customer-export-neighborhood" type="text" maxlength="100" placeholder="الحي" disabled>
+          <input id="invoice-customer-export-neighborhood" type="text" maxlength="15" placeholder="الحي" disabled>
         </label>
         <label for="invoice-responsible-teacher-name">اسم المعلم المسؤول <span>(اختياري)</span>
-          <input id="invoice-responsible-teacher-name" type="text" maxlength="80" placeholder="اسم المعلم المسؤول">
+          <input id="invoice-responsible-teacher-name" type="text" maxlength="20" placeholder="اسم المعلم المسؤول">
         </label>
         <label for="invoice-workshop-name">اسم الورشة <span>(اختياري)</span>
-          <input id="invoice-workshop-name" type="text" maxlength="100" placeholder="اسم الورشة">
+          <input id="invoice-workshop-name" type="text" maxlength="40" placeholder="اسم الورشة">
         </label>
       </div>`}
       <div class="invoice-export-summary">
@@ -3751,6 +3762,18 @@ function openInvoiceCustomerExportDialog(
         : 'صورة عادية'
   }
   const syncExportData = (notifyInvalid = false) => {
+    const invalidField = allowDataEdit ? [
+      { label: 'اسم الزبون', input: nameInput, max: 20 },
+      { label: 'رقم الهاتف', input: phoneInput, max: 15 },
+      { label: 'العنوان', input: addressInput, max: 15 },
+      { label: 'الحي', input: neighborhoodInput, max: 15 },
+      { label: 'اسم المعلم', input: responsibleTeacherInput, max: 20 },
+      { label: 'اسم الورشة', input: workshopNameInput, max: 40 },
+    ].find(({ input, max }) => input !== null && input.value.length > max) : undefined
+    if (invalidField) {
+      if (notifyInvalid) showToast(`يجب ألا يتجاوز ${invalidField.label} ${invalidField.max} حرفًا.`)
+      return false
+    }
     if (allowDataEdit && activeDiscountMode && !getActiveDiscount()) {
       if (notifyInvalid) showToast('أدخل قيمة خصم صحيحة قبل المتابعة، أو ألغِ تفعيل الخصم.')
       return false
@@ -4369,7 +4392,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
               <span class="service-order invoice-card-order" aria-label="ترتيب الخدمة ${index + 1} في الفاتورة">${index + 1}</span>
               <div class="invoice-card-header">
                 ${custom
-                  ? `<input class="invoice-custom-name" type="text" data-invoice-name="${id}" value="${escapeHtml(name)}" aria-label="اسم الخدمة غير المسجلة" placeholder="اسم الخدمة">`
+                  ? `<input class="invoice-custom-name" type="text" data-invoice-name="${id}" maxlength="50" value="${escapeHtml(name)}" aria-label="اسم الخدمة غير المسجلة" placeholder="اسم الخدمة">`
                   : `<h3>${escapeHtml(name)}</h3>`}
                 <button class="invoice-cancel-service${cancelled ? ' is-cancelled' : ''}" type="button" data-invoice-cancel="${id}" aria-label="${cancelled ? 'استعادة' : 'إلغاء'} ${escapeHtml(name || 'الخدمة')}" title="${cancelled ? 'استعادة الخدمة' : 'إلغاء الخدمة'}">
                   <span>${cancelled ? 'استعادة' : 'إلغاء'}</span>
@@ -4377,7 +4400,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
               </div>
               <label class="invoice-notes-row">
                 <span class="invoice-notes-label">ملاحظة</span>
-                <input class="invoice-notes-field" type="text" data-invoice-notes="${id}" value="${escapeHtml(notes)}" placeholder="أضف ملاحظة اختيارية عن الخدمة" aria-label="ملاحظات الخدمة">
+                <input class="invoice-notes-field" type="text" data-invoice-notes="${id}" maxlength="35" value="${escapeHtml(notes)}" placeholder="أضف ملاحظة اختيارية عن الخدمة" aria-label="ملاحظات الخدمة">
               </label>
               <div class="invoice-service-fields">
                 <div class="invoice-field invoice-quantity-field">
@@ -4385,7 +4408,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
                     <span class="invoice-quantity-heading">الكمية</span>
                     <span class="invoice-unit-group">
                       ${custom
-                        ? `<input class="invoice-unit-cell invoice-unit-input" type="text" data-invoice-unit="${id}" value="${escapeHtml(unit)}" aria-label="وحدة القياس" placeholder="الوحدة">`
+                        ? `<input class="invoice-unit-cell invoice-unit-input" type="text" data-invoice-unit="${id}" maxlength="15" value="${escapeHtml(unit)}" aria-label="وحدة القياس" placeholder="الوحدة">`
                         : `<span class="invoice-unit-cell invoice-unit-label">${escapeHtml(unit)}</span>`}
                     </span>
                   </span>
@@ -4577,6 +4600,18 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       const notes = item.notes.trim()
       const quantityText = item.quantity.trim()
       const priceText = item.price.trim()
+      if (name.length > 50) {
+        showToast('يجب ألا يتجاوز اسم الخدمة 50 حرفًا.')
+        return null
+      }
+      if (unit.length > 15) {
+        showToast('يجب ألا تتجاوز وحدة القياس 15 حرفًا.')
+        return null
+      }
+      if (notes.length > 35) {
+        showToast('يجب ألا تتجاوز ملاحظة الخدمة 35 حرفًا.')
+        return null
+      }
       if (item.cancelled) {
         const quantity = Number.isFinite(Number(quantityText)) ? Number(quantityText) : 0
         const unitPrice = Number.isFinite(Number(priceText)) ? Number(priceText) : 0
