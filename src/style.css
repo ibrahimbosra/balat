@@ -1514,47 +1514,14 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   font-size: 12px;
   font-weight: 800;
 }
-.invoice-share-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.invoice-share-actions > button,
-.invoice-share-manual > button {
-  min-width: 0;
-  min-height: 40px;
-  white-space: normal;
-}
-.invoice-share-manual {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: end;
-  gap: 8px;
-}
-.invoice-share-manual label {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-}
-.invoice-share-manual input {
-  min-width: 0;
-  min-height: 40px;
-  padding: 8px 10px;
-  font-size: 13px;
-}
-.invoice-share-hint,
-.invoice-share-status {
+.invoice-share-button { width: 100%; min-height: 42px; }
+.invoice-share-hint {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
 }
-.invoice-share-status:empty { display: none; }
-.invoice-share-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.invoice-share-button:disabled { opacity: .5; cursor: not-allowed; }
 .invoice-customer-identity-warning {
   margin: 8px 0 0;
   border: 1px solid #e6a3a0;
@@ -2292,15 +2259,8 @@ body.dark-mode .invoice-export-format,
 body.dark-mode .invoice-discount-options,
 body.dark-mode .invoice-export-note-field { border-color: #2b3b49; }
 body.dark-mode .invoice-share-panel { border-color: #2b3b49; }
-body.dark-mode .invoice-share-panel legend,
-body.dark-mode .invoice-share-manual label { color: #e6edf3; }
-body.dark-mode .invoice-share-manual input {
-  border-color: #2b3b49;
-  background: #111b24;
-  color: #e6edf3;
-}
-body.dark-mode .invoice-share-hint,
-body.dark-mode .invoice-share-status { color: #aab8c5; }
+body.dark-mode .invoice-share-panel legend { color: #e6edf3; }
+body.dark-mode .invoice-share-hint { color: #aab8c5; }
 body.dark-mode .invoice-export-format legend,
 body.dark-mode .invoice-discount-options legend,
 body.dark-mode .invoice-export-note-field legend,

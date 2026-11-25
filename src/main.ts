@@ -318,14 +318,6 @@ function normalizeCustomerPhone(value: string) {
     .replace(/\D/g, '')
 }
 
-function normalizeWhatsAppPhone(value: string): string | null {
-  let digits = normalizeCustomerPhone(value)
-  if (digits.startsWith('00')) digits = digits.slice(2)
-  if (digits.startsWith('0')) digits = `963${digits.slice(1)}`
-  else if (digits.length === 9 && digits.startsWith('9')) digits = `963${digits}`
-  return digits.length >= 8 && digits.length <= 15 ? digits : null
-}
-
 function findCustomerIdentityMatch(
   name: string,
   phone: string,
@@ -2746,16 +2738,7 @@ async function exportInvoiceImage(
   button.disabled = true
   try {
     const files = await renderInvoiceImageFiles(data, imageScale)
-    files.forEach((file) => {
-      const url = URL.createObjectURL(file)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = file.name
-      document.body.append(link)
-      link.click()
-      link.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    })
+    downloadInvoiceFiles(files)
     showToast(imageScale === 2 ? 'تم تصدير الفاتورة كصورة فائقة.' : 'تم تصدير الفاتورة كصورة.')
     return true
   } catch (error) {
@@ -2782,7 +2765,7 @@ async function renderInvoiceImageFiles(data: InvoiceExportData, imageScale: 1 | 
   })))
 }
 
-function downloadInvoiceImageFiles(files: File[]) {
+function downloadInvoiceFiles(files: File[]) {
   files.forEach((file) => {
     const url = URL.createObjectURL(file)
     const link = document.createElement('a')
@@ -2795,7 +2778,29 @@ function downloadInvoiceImageFiles(files: File[]) {
   })
 }
 
-async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExportData) {
+async function shareInvoiceFiles(files: File[], data: InvoiceExportData): Promise<'shared' | 'downloaded' | 'cancelled'> {
+  if (typeof navigator.share !== 'function' || (navigator.canShare && !navigator.canShare({ files }))) {
+    downloadInvoiceFiles(files)
+    return 'downloaded'
+  }
+  try {
+    await navigator.share({
+      files,
+      title: `فاتورة رقم ${data.invoiceNumber}`,
+      text: `فاتورة رقم ${data.invoiceNumber}`,
+    })
+    return 'shared'
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+    if (error instanceof TypeError || (error instanceof DOMException && error.name === 'NotAllowedError')) {
+      downloadInvoiceFiles(files)
+      return 'downloaded'
+    }
+    throw error
+  }
+}
+
+async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExportData, share = false) {
   button.disabled = true
   try {
     const ExcelJS = await import('exceljs')
@@ -3222,20 +3227,21 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     worksheet.pageSetup.printArea = `A1:${lastColumn}${noticeRowNumber}`
 
     const buffer = await workbook.xlsx.writeBuffer()
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `فاتورة-${data.invoiceNumber}-${data.exportDate}.xlsx`
-    document.body.append(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    showToast('تم تصدير الفاتورة كملف Excel.')
+    const file = new File([buffer], `فاتورة-${data.invoiceNumber}-${data.exportDate}.xlsx`, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    if (share) {
+      const result = await shareInvoiceFiles([file], data)
+      if (result === 'shared') showToast('تم تسليم الفاتورة إلى التطبيق المختار.')
+      else if (result === 'downloaded') showToast('مشاركة الملفات غير مدعومة. تم تنزيل ملف الفاتورة.')
+    } else {
+      downloadInvoiceFiles([file])
+      showToast('تم تصدير الفاتورة كملف Excel.')
+    }
     return true
   } catch (error) {
     console.error('Failed to export invoice Excel:', error)
-    showToast('تعذر تصدير ملف الفاتورة. حاول مجددًا.')
+    showToast(share ? 'تعذرت مشاركة ملف الفاتورة.' : 'تعذر تصدير ملف الفاتورة. حاول مجددًا.')
     return false
   } finally {
     button.disabled = false
@@ -3731,18 +3737,8 @@ function openInvoiceCustomerExportDialog(
       ${isExportOnly ? `
       <fieldset class="invoice-share-panel">
         <legend>مشاركة الفاتورة</legend>
-        <div class="invoice-share-actions">
-          <button type="button" class="secondary-button" data-invoice-share-native>مشاركة الصورة</button>
-          <button type="button" class="secondary-button" data-invoice-share-customer${data.customerPhone.trim() ? '' : ' disabled'}>فتح WhatsApp للزبون المسجل</button>
-          <div class="invoice-share-manual">
-            <label for="invoice-share-phone">أو أدخل رقم هاتف يدويًا
-              <input id="invoice-share-phone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="مثال: 09xxxxxxxx">
-            </label>
-            <button type="button" class="secondary-button" data-invoice-share-manual>فتح المحادثة</button>
-          </div>
-        </div>
-        <p class="invoice-share-hint">مشاركة الصورة تفتح قائمة المشاركة لاختيار WhatsApp أو تطبيق آخر. عند فتح محادثة برقم، ستُنزل الصورة لإرفاقها يدويًا.</p>
-        <p class="invoice-share-status" data-invoice-share-status role="status" aria-live="polite"></p>
+        <button type="button" class="secondary-button invoice-share-button" data-invoice-share>مشاركة الفاتورة</button>
+        <p class="invoice-share-hint">ستتم مشاركة الفاتورة حسب نوع التصدير المحدد أعلاه.</p>
       </fieldset>` : ''}
       ${allowDataEdit ? '<p class="invoice-customer-identity-warning" data-invoice-customer-warning role="alert" aria-live="polite" hidden></p>' : ''}
       <div class="invoice-inline-preview" data-invoice-inline-preview hidden>
@@ -3773,11 +3769,7 @@ function openInvoiceCustomerExportDialog(
   const previewStatus = backdrop.querySelector<HTMLElement>('[data-invoice-inline-status]')!
   const previewButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-preview')!
   const confirmButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!
-  const nativeShareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share-native]')
-  const savedCustomerShareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share-customer]')
-  const manualShareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share-manual]')
-  const manualSharePhoneInput = backdrop.querySelector<HTMLInputElement>('#invoice-share-phone')
-  const shareStatus = backdrop.querySelector<HTMLElement>('[data-invoice-share-status]')
+  const shareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share]')
   const closeButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-close')!
   const cancelButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!
   const formatInputs = [...backdrop.querySelectorAll<HTMLInputElement>('input[name="invoice-export-format"]')]
@@ -4107,16 +4099,12 @@ function openInvoiceCustomerExportDialog(
       percentageInput,
       amountInput,
       exportNoteInput,
-      nativeShareButton,
-      savedCustomerShareButton,
-      manualShareButton,
-      manualSharePhoneInput,
+      shareButton,
       ...formatInputs,
       ...modeButtons,
     ].filter((control): control is HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement => Boolean(control)).forEach((control) => {
       control.disabled = disabled
     })
-    if (savedCustomerShareButton) savedCustomerShareButton.disabled = disabled || !data.customerPhone.trim()
     if (phoneInput) phoneInput.disabled = disabled || Boolean(selectedCustomerId)
     if (addressInput) addressInput.disabled = disabled || Boolean(selectedCustomerId)
     if (neighborhoodInput) {
@@ -4189,97 +4177,26 @@ function openInvoiceCustomerExportDialog(
   let sharingInvoice = false
   const setSharingInvoice = (sharing: boolean) => {
     sharingInvoice = sharing
-    ;[nativeShareButton, savedCustomerShareButton, manualShareButton].forEach((button) => {
-      if (button) button.disabled = sharing || (button === savedCustomerShareButton && !data.customerPhone.trim())
-    })
-    if (manualSharePhoneInput) manualSharePhoneInput.disabled = sharing
+    if (shareButton) shareButton.disabled = sharing
   }
-  const getInvoiceShareFiles = async () => {
-    if (!syncExportData(true)) return null
-    try {
-      return await renderInvoiceImageFiles(data, 2)
-    } catch (error) {
-      console.error('Failed to prepare invoice images for sharing:', error)
-      if (shareStatus) shareStatus.textContent = 'تعذر تجهيز صور الفاتورة للمشاركة.'
-      showToast('تعذر تجهيز صور الفاتورة للمشاركة.')
-      return null
-    }
-  }
-  const openWhatsAppChat = async (phone: string) => {
+  shareButton?.addEventListener('click', async () => {
     if (sharingInvoice) return
-    const phoneNumber = normalizeWhatsAppPhone(phone)
-    if (!phoneNumber) {
-      showToast('أدخل رقم هاتف صحيحًا مع مفتاح الدولة أو رقمًا سوريًا محليًا.')
-      shareStatus?.replaceChildren()
-      manualSharePhoneInput?.focus()
-      return
-    }
     if (!syncExportData(true)) return
-    const message = `مرحبًا، أرسل إليك فاتورة رقم ${data.invoiceNumber}.`
-    const link = document.createElement('a')
-    link.href = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`
-    link.target = '_blank'
-    link.rel = 'noopener noreferrer'
-    document.body.append(link)
-    link.click()
-    link.remove()
     setSharingInvoice(true)
-    if (shareStatus) shareStatus.textContent = 'جارٍ تجهيز صورة الفاتورة لتنزيلها...'
     try {
-      const files = await renderInvoiceImageFiles(data, 2)
-      downloadInvoiceImageFiles(files)
-      if (shareStatus) shareStatus.textContent = 'أُنزِلت الصورة. أرفقها في محادثة WhatsApp المفتوحة ثم أرسلها.'
-      showToast('أُنزِلت صورة الفاتورة. أرفقها في محادثة WhatsApp ثم أرسلها.')
-    } catch (error) {
-      console.error('Failed to prepare invoice image for WhatsApp:', error)
-      if (shareStatus) shareStatus.textContent = 'فُتحت المحادثة لكن تعذر تنزيل صورة الفاتورة.'
-      showToast('فُتحت المحادثة لكن تعذر تنزيل صورة الفاتورة.')
-    } finally {
-      setSharingInvoice(false)
-    }
-  }
-  nativeShareButton?.addEventListener('click', async () => {
-    if (sharingInvoice) return
-    setSharingInvoice(true)
-    if (shareStatus) shareStatus.textContent = 'جارٍ تجهيز صور الفاتورة للمشاركة...'
-    try {
-      const files = await getInvoiceShareFiles()
-      if (!files) return
-      const shareData: ShareData = {
-        files,
-        title: `فاتورة رقم ${data.invoiceNumber}`,
-        text: `فاتورة رقم ${data.invoiceNumber}`,
-      }
-      if (typeof navigator.share !== 'function' || (navigator.canShare && !navigator.canShare({ files }))) {
-        downloadInvoiceImageFiles(files)
-        if (shareStatus) shareStatus.textContent = 'المشاركة المباشرة غير مدعومة في هذا المتصفح. أُنزِلت الصور لإرفاقها يدويًا.'
-        showToast('المشاركة المباشرة غير مدعومة. أُنزِلت صور الفاتورة لإرفاقها يدويًا.')
+      if (data.exportFormat === 'excel') {
+        await exportInvoiceToExcel(shareButton, data, true)
         return
       }
-      await navigator.share(shareData)
-      if (shareStatus) shareStatus.textContent = 'اكتملت المشاركة من التطبيق الذي اخترته.'
+      const files = await renderInvoiceImageFiles(data, data.exportFormat === 'image-high' ? 2 : 1)
+      const result = await shareInvoiceFiles(files, data)
+      if (result === 'shared') showToast('تم تسليم الفاتورة إلى التطبيق المختار.')
+      else if (result === 'downloaded') showToast('مشاركة الملفات غير مدعومة. تم تنزيل الفاتورة حسب النوع المحدد.')
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        if (shareStatus) shareStatus.textContent = 'أُلغيت المشاركة.'
-        return
-      }
-      console.error('Failed to share invoice image:', error)
-      if (shareStatus) shareStatus.textContent = 'تعذرت مشاركة الصورة. يمكنك فتح WhatsApp برقم أو تنزيل الصورة.'
-      showToast('تعذرت مشاركة صورة الفاتورة.')
+      console.error('Failed to share invoice:', error)
+      showToast('تعذرت مشاركة الفاتورة. حاول مجددًا.')
     } finally {
       setSharingInvoice(false)
-    }
-  })
-  savedCustomerShareButton?.addEventListener('click', () => {
-    void openWhatsAppChat(data.customerPhone)
-  })
-  manualShareButton?.addEventListener('click', () => {
-    void openWhatsAppChat(manualSharePhoneInput?.value || '')
-  })
-  manualSharePhoneInput?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      manualShareButton?.click()
     }
   })
   updateCustomerIdentityWarning()
