@@ -1254,10 +1254,21 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   font-weight: 800;
 }
 .invoice-customer-picker-option-main > span {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+.invoice-customer-picker-contact > span { overflow-wrap: anywhere; }
+.invoice-customer-picker-contact-separator { opacity: .7; }
+.invoice-customer-picker-address {
+  position: relative;
+  top: -1px;
 }
 .invoice-customer-picker-option-arrow {
   display: grid;

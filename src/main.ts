@@ -3556,7 +3556,10 @@ function openInvoiceCustomerExportDialog(
         <button type="button" class="invoice-customer-picker-option" role="option" data-customer-id="${escapeHtml(customer.id)}">
           <span class="invoice-customer-picker-option-main">
             <strong>${escapeHtml(customer.name)}</strong>
-            <span>${customer.phone ? escapeHtml(customer.phone) : 'بدون رقم هاتف'}${customer.address ? ` · ${escapeHtml(customer.address)}` : ''}</span>
+            <span class="invoice-customer-picker-contact">
+              <span>${customer.phone ? escapeHtml(customer.phone) : 'بدون رقم هاتف'}</span>
+              ${customer.address ? `<span class="invoice-customer-picker-contact-separator" aria-hidden="true">|</span><span class="invoice-customer-picker-address">${escapeHtml(customer.address)}</span>` : ''}
+            </span>
           </span>
           <span class="invoice-customer-picker-option-arrow" aria-hidden="true">‹</span>
         </button>`).join('')
