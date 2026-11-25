@@ -160,7 +160,8 @@ textarea { resize: vertical; min-height: 82px; }
 .form-error, .modal-error { min-height: 17px; margin: 0; color: var(--coral); font-size: 12px; }
 
 .products-page { width: min(100% - 28px, 620px); margin: auto; padding: 0 0 70px; }
-.topbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0,1fr) 42px 42px 42px; gap: 8px; padding: 13px 0 12px; background: #f5f7f9ee; backdrop-filter: blur(14px); }
+.topbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0,1fr) 42px 42px 42px; align-items: stretch; gap: 8px; padding: 13px 0 12px; background: #f5f7f9ee; backdrop-filter: blur(14px); }
+.topbar .icon-button { height: auto; min-height: 42px; align-self: stretch; }
 .main-sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 2px 0 10px; }
 .main-sections button { min-height: 42px; border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 800; }
 .main-sections button.active { border-color: #b7d9d4; background: #e3f1ef; color: var(--teal); box-shadow: inset 0 0 0 1px #b7d9d4; }
