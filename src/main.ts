@@ -112,6 +112,7 @@ type StoredInvoiceDiscount = {
 } | null
 
 type StoredInvoiceEditableItem = {
+  id?: number
   custom: boolean
   name: string
   notes: string
@@ -424,6 +425,7 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
       ? item.unitCode
       : null
     return {
+      ...(typeof item.id === 'number' && Number.isSafeInteger(item.id) && item.id > 0 ? { id: item.id } : {}),
       custom: item.custom === true,
       name: typeof item.name === 'string' ? item.name : '',
       notes: typeof item.notes === 'string' ? item.notes : '',
@@ -3171,6 +3173,12 @@ function getInvoiceRecordEditableItems(record: InvoiceRecord): StoredInvoiceEdit
   }))
 }
 
+function getInvoiceEditableItemId(item: StoredInvoiceEditableItem, index: number): number {
+  return typeof item.id === 'number' && Number.isSafeInteger(item.id) && item.id > 0
+    ? item.id
+    : index + 1
+}
+
 function invoiceRecordToExportData(record: InvoiceRecord): InvoiceExportData {
   const payments = record.payments.map((payment) => ({ ...payment }))
   const lastPayment = payments[payments.length - 1]
@@ -3199,7 +3207,7 @@ function invoiceTermsSignature(record: InvoiceRecord): string {
   return JSON.stringify({
     rows: record.rows,
     unitTotals: record.unitTotals,
-    items: record.items,
+    items: record.items.map(({ id: _id, ...item }) => item),
     total: record.total,
     discount: record.discount,
     customerId: record.customerId,
@@ -3265,27 +3273,17 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
 
   const prevItems = getInvoiceRecordEditableItems(previous)
   const currItems = getInvoiceRecordEditableItems(current)
-  const itemCount = Math.max(prevItems.length, currItems.length)
-  for (let i = 0; i < itemCount; i++) {
-    const prev = prevItems[i]
-    const curr = currItems[i]
-    if (!prev && curr) {
-      const qty = curr.quantity?.trim() ? curr.quantity.trim() : '—'
-      const price = curr.price?.trim() ? `${money(Number(curr.price))} دولار` : '—'
-      changes.push({
-        label: 'إضافة خدمة',
-        text: `${(curr.name || '').trim() || `خدمة #${i + 1}`} (${qty} ${curr.unit || ''} × ${price})${curr.cancelled ? ' — مُلغاة' : ''}`.trim(),
-      })
+  const prevItemsById = new Map(prevItems.map((item, index) => [getInvoiceEditableItemId(item, index), { item, index }]))
+  const currItemsById = new Map(currItems.map((item, index) => [getInvoiceEditableItemId(item, index), { item, index }]))
+  for (const [id, { item: prev, index }] of prevItemsById) {
+    const currentEntry = currItemsById.get(id)
+    if (!currentEntry) {
+      changes.push({ label: 'إزالة خدمة', text: `${(prev.name || '').trim() || `خدمة #${index + 1}`} (إزالة من الفاتورة)` })
       tags.add('خدمات')
       continue
     }
-    if (prev && !curr) {
-      changes.push({ label: 'إزالة خدمة', text: `${(prev.name || '').trim() || `خدمة #${i + 1}`} (إزالة من السجل)` })
-      tags.add('خدمات')
-      continue
-    }
-    if (!prev || !curr) continue
-    const name = correctionItemName(curr.name ? curr : prev, i)
+    const curr = currentEntry.item
+    const name = correctionItemName(curr.name ? curr : prev, index)
     const itemChanges: string[] = []
     if ((prev.name || '').trim() !== (curr.name || '').trim()) itemChanges.push(`الاسم: ${(prev.name || '').trim() || '—'} ← ${(curr.name || '').trim() || '—'}`)
     if ((prev.unit || '').trim() !== (curr.unit || '').trim()) itemChanges.push(`الوحدة: ${(prev.unit || '').trim() || '—'} ← ${(curr.unit || '').trim() || '—'}`)
@@ -3297,6 +3295,16 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
       changes.push({ label: name, text: itemChanges.join(' • ') })
       tags.add(Boolean(prev.cancelled) !== Boolean(curr.cancelled) ? 'إلغاء/استعادة' : 'خدمات')
     }
+  }
+  for (const [id, { item: curr, index }] of currItemsById) {
+    if (prevItemsById.has(id)) continue
+    const qty = curr.quantity?.trim() ? curr.quantity.trim() : '—'
+    const price = curr.price?.trim() ? `${money(Number(curr.price))} دولار` : '—'
+    changes.push({
+      label: 'إضافة خدمة',
+      text: `${(curr.name || '').trim() || `خدمة #${index + 1}`} (${qty} ${curr.unit || ''} × ${price})${curr.cancelled ? ' — مُلغاة' : ''}`.trim(),
+    })
+    tags.add('خدمات')
   }
 
   const prevPayments = previous.payments || []
@@ -4281,9 +4289,11 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         currencyCode: 'USD',
         cancelled: row.cancelled === true,
       }))
-    sourceItems.forEach((item) => {
+    sourceItems.forEach((item, index) => {
+      const itemId = getInvoiceEditableItemId(item, index)
+      nextInvoiceItemId = Math.max(nextInvoiceItemId, itemId + 1)
       invoiceItems.push({
-        id: nextInvoiceItemId++,
+        id: itemId,
         custom: item.custom,
         name: item.name,
         notes: item.notes,
@@ -4740,7 +4750,8 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           data.upfrontPaymentDate = data.exportDate
           data.payments = []
         }
-        const editableItems = invoiceItems.map(({ custom, name, notes, quantity, price, unit, unitCode, currencyCode, cancelled }) => ({
+        const editableItems = invoiceItems.map(({ id, custom, name, notes, quantity, price, unit, unitCode, currencyCode, cancelled }) => ({
+          id,
           custom,
           name,
           notes,
@@ -4799,9 +4810,10 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     const cancelButton = event.target.closest<HTMLButtonElement>('[data-invoice-cancel]')
     if (cancelButton) {
       const itemId = Number(cancelButton.dataset.invoiceCancel)
-      const item = invoiceItems.find((line) => line.id === itemId)
-      if (!item) return
-      item.cancelled = !item.cancelled
+      const itemIndex = invoiceItems.findIndex((line) => line.id === itemId)
+      if (itemIndex < 0) return
+      if (options?.correction) invoiceItems.splice(itemIndex, 1)
+      else invoiceItems[itemIndex].cancelled = !invoiceItems[itemIndex].cancelled
       renderInvoice()
       return
     }
