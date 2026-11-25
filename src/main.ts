@@ -74,6 +74,7 @@ type Customer = {
   name: string
   phone: string
   address: string
+  neighborhood: string
   notes: string
   createdAt: string
   updatedAt: string
@@ -278,6 +279,7 @@ function parseCustomer(id: string, data: Record<string, unknown>): Customer | nu
     name,
     phone: typeof data.phone === 'string' ? data.phone.trim() : '',
     address: typeof data.address === 'string' ? data.address.trim() : '',
+    neighborhood: typeof data.neighborhood === 'string' ? data.neighborhood.trim() : '',
     notes: typeof data.notes === 'string' ? data.notes.trim() : '',
     createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
     updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
@@ -286,8 +288,9 @@ function parseCustomer(id: string, data: Record<string, unknown>): Customer | nu
 
 type CustomerIdentityMatch =
   | { kind: 'exact'; customer: Customer }
+  | { kind: 'duplicate-identity'; customer: Customer }
   | { kind: 'phone-conflict'; customer: Customer }
-  | { kind: 'address-needed'; customer: Customer }
+  | { kind: 'duplicate-identity-multiple'; name: string }
   | { kind: 'multiple-matches' }
 
 class CustomerIdentityError extends Error {
@@ -317,51 +320,67 @@ function findCustomerIdentityMatch(
   name: string,
   phone: string,
   address: string,
+  neighborhood: string,
   excludeCustomerId?: string,
 ): CustomerIdentityMatch | null {
   const nameKey = normalizeCustomerText(name)
   const phoneKey = normalizeCustomerPhone(phone)
   const addressKey = normalizeCustomerText(address)
+  const neighborhoodKey = normalizeCustomerText(neighborhood)
   const candidates = customers.filter((customer) => customer.id !== excludeCustomerId)
+  const sameName = nameKey
+    ? candidates.filter((customer) => normalizeCustomerText(customer.name) === nameKey)
+    : []
+  const phoneMatches = phoneKey
+    ? candidates.filter((customer) => normalizeCustomerPhone(customer.phone) === phoneKey)
+    : []
 
-  if (phoneKey) {
-    const phoneMatches = candidates.filter((customer) => normalizeCustomerPhone(customer.phone) === phoneKey)
-    if (phoneMatches.length) {
-      const exactMatch = phoneMatches.find((customer) =>
-        !nameKey || normalizeCustomerText(customer.name) === nameKey)
-      return exactMatch
-        ? { kind: 'exact', customer: exactMatch }
-        : { kind: 'phone-conflict', customer: phoneMatches[0] }
-    }
-    return null
+  if (phoneMatches.length) {
+    const exactMatches = phoneMatches.filter((customer) =>
+      !nameKey || normalizeCustomerText(customer.name) === nameKey)
+    if (exactMatches.length === 1) return { kind: 'exact', customer: exactMatches[0] }
+    if (exactMatches.length > 1 || (!nameKey && phoneMatches.length > 1)) return { kind: 'multiple-matches' }
+    return { kind: 'phone-conflict', customer: phoneMatches[0] }
   }
 
   if (!nameKey) return null
-  const sameName = candidates.filter((customer) => normalizeCustomerText(customer.name) === nameKey)
-  if (addressKey) {
-    const exactMatches = sameName.filter((customer) => normalizeCustomerText(customer.address) === addressKey)
-    if (exactMatches.length === 1) return { kind: 'exact', customer: exactMatches[0] }
-    if (exactMatches.length > 1) return { kind: 'multiple-matches' }
-    return null
+  const exactIdentityMatches = sameName.filter((customer) =>
+    normalizeCustomerPhone(customer.phone) === phoneKey
+    && normalizeCustomerText(customer.address) === addressKey
+    && normalizeCustomerText(customer.neighborhood) === neighborhoodKey)
+  if (exactIdentityMatches.length > 1) {
+    return { kind: 'duplicate-identity-multiple', name: sameName[0].name }
   }
-  if (sameName.length === 1) return { kind: 'address-needed', customer: sameName[0] }
-  if (sameName.length > 1) return { kind: 'multiple-matches' }
+  if (exactIdentityMatches.length === 1) {
+    return { kind: 'duplicate-identity', customer: exactIdentityMatches[0] }
+  }
   return null
 }
 
 function customerIdentityMessage(match: CustomerIdentityMatch, context: 'invoice' | 'customer') {
   if (match.kind === 'exact') {
     return context === 'invoice'
-      ? 'الزبون مسجل بالفعل، وسيتم ربط الفاتورة باسمه.'
-      : 'هذا الزبون مسجل بالفعل ولا يمكن إضافته مرة أخرى.'
+      ? 'تطابق رقم الهاتف أو بيانات الزبون مع سجل موجود. لا يمكن حفظ الفاتورة بهذه البيانات؛ اختر الزبون المسجل من السهم داخل خانة الاسم.'
+      : `رقم الهاتف مسجل بالفعل للزبون ${match.customer.name}. لا يمكن استخدامه لزبون آخر؛ تحقق من الرقم.`
+  }
+  if (match.kind === 'duplicate-identity') {
+    return context === 'invoice'
+      ? `بيانات الزبون ${match.customer.name} مطابقة لسجل مسجل. اختره من السهم، أو غيّر رقم الهاتف أو العنوان أو الحي.`
+      : `الزبون ${match.customer.name} مسجل بهذه البيانات. غيّر رقم الهاتف أو العنوان أو الحي لتمييزه.`
   }
   if (match.kind === 'phone-conflict') {
-    return `رقم الهاتف مرتبط بزبون اسمه ${match.customer.name}. اختره من القائمة أو تحقق من صحة البيانات.`
+    return context === 'invoice'
+      ? `رقم الهاتف مرتبط بزبون اسمه ${match.customer.name}. لا يمكن حفظ الفاتورة بهذا الرقم؛ صحح الرقم أو اختر هذا الزبون من السهم داخل خانة الاسم.`
+      : `رقم الهاتف مرتبط بزبون اسمه ${match.customer.name}. لا يمكن إضافة زبون آخر بهذا الرقم.`
   }
-  if (match.kind === 'address-needed') {
-    return `يوجد زبون مسجل باسم ${match.customer.name}. أدخل العنوان لتمييزه أو اختره من القائمة.`
+  if (match.kind === 'duplicate-identity-multiple') {
+    return context === 'invoice'
+      ? `توجد عدة سجلات مطابقة لاسم ${match.name} وبياناته. اختر الزبون الصحيح من السهم أو غيّر رقم الهاتف أو العنوان أو الحي.`
+      : `توجد عدة سجلات مطابقة لاسم ${match.name} وبياناته. غيّر رقم الهاتف أو العنوان أو الحي.`
   }
-  return 'توجد عدة سجلات محتملة لهذا الاسم. اختر الزبون من القائمة أو أضف رقم الهاتف لتحديده.'
+  return context === 'invoice'
+    ? 'توجد عدة سجلات محتملة لهذا الاسم أو الرقم. لا يمكن حفظ الفاتورة؛ اختر الزبون الصحيح من السهم داخل خانة الاسم أو عدّل الاسم.'
+    : 'توجد عدة سجلات محتملة لهذه البيانات. تحقق منها قبل إضافة الزبون.'
 }
 
 function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceRecord | null {
@@ -613,28 +632,80 @@ function updateServicesShell() {
   })
 }
 
+function getCustomerInvoiceSummaries() {
+  const summaries = new Map<string, { total: number; paid: number; remaining: number }>()
+  const roots = invoiceRecords.filter((record) => record.rootId === record.id)
+
+  roots.forEach((root) => {
+    const versions = getInvoiceRootVersions(root.rootId)
+    const latest = versions[versions.length - 1] || root
+    const linkedCustomer = customers.find((customer) => customer.id === latest.customerId)
+    const nameKey = normalizeCustomerText(latest.customerName)
+    const matchingCustomers = nameKey
+      ? customers.filter((customer) => normalizeCustomerText(customer.name) === nameKey)
+      : []
+    const phoneKey = normalizeCustomerPhone(latest.customerPhone)
+    const matchedCustomer = linkedCustomer
+      || (phoneKey
+        ? matchingCustomers.find((customer) => normalizeCustomerPhone(customer.phone) === phoneKey)
+        : undefined)
+      || (matchingCustomers.length === 1 ? matchingCustomers[0] : undefined)
+    if (!matchedCustomer) return
+
+    const summary = summaries.get(matchedCustomer.id) || { total: 0, paid: 0, remaining: 0 }
+    summary.total += getInvoiceNetTotal(latest)
+    summary.paid += getInvoicePaidTotal(latest)
+    summary.remaining += getInvoiceRemainingTotal(latest)
+    summaries.set(matchedCustomer.id, summary)
+  })
+
+  return summaries
+}
+
 function renderCustomersSection() {
   const content = document.querySelector<HTMLElement>('#main-section-content')
   const count = document.querySelector<HTMLElement>('#service-count')
   if (!content) return
+  const invoiceSummaries = getCustomerInvoiceSummaries()
   const search = getMainSearchQuery()
   const visible = customers
-    .filter((customer) => [customer.name, customer.phone, customer.address, customer.notes].join(' ').toLocaleLowerCase('ar').includes(search))
+    .filter((customer) => [customer.name, customer.phone, customer.address, customer.neighborhood, customer.notes].join(' ').toLocaleLowerCase('ar').includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
   if (count) count.textContent = String(visible.length)
   content.innerHTML = visible.length ? `
     <section class="service-list customers-list">
-      ${visible.map((customer, index) => `
-        <article class="service-row customer-row">
-          <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
-          <button class="service-main" type="button" data-edit-customer="${customer.id}">
-            <span class="service-name">${escapeHtml(customer.name)}</span>
-            ${customer.phone ? `<span class="service-description">${escapeHtml(customer.phone)}</span>` : ''}
-            ${customer.address ? `<span class="service-unit">${escapeHtml(customer.address)}</span>` : '<span class="service-unit">بدون عنوان</span>'}
-            ${customer.notes ? `<span class="service-description">${escapeHtml(customer.notes)}</span>` : ''}
-          </button>
-        </article>
-      `).join('')}
+      ${visible.map((customer, index) => {
+        const summary = invoiceSummaries.get(customer.id) || { total: 0, paid: 0, remaining: 0 }
+        return `
+          <article class="service-row customer-row">
+            <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
+            <button class="service-main customer-main" type="button" data-edit-customer="${customer.id}">
+              <span class="customer-identity-line">
+                <span class="service-name">${escapeHtml(customer.name)}</span>
+                <span class="customer-identity-separator" aria-hidden="true">|</span>
+                <span class="customer-address">${customer.address ? escapeHtml(customer.address) : 'بدون عنوان'}</span>
+                ${customer.neighborhood ? `<span class="customer-identity-separator" aria-hidden="true">|</span><span class="customer-neighborhood">${escapeHtml(customer.neighborhood)}</span>` : ''}
+              </span>
+              ${customer.phone ? `<span class="customer-phone">${escapeHtml(customer.phone)}</span>` : ''}
+              ${customer.notes ? `<span class="service-description customer-notes">${escapeHtml(customer.notes)}</span>` : ''}
+              <span class="customer-financials" aria-label="الملخص المالي للزبون">
+                <span class="customer-financial-card customer-financial-card--total">
+                  <span class="customer-financial-label">الإجمالي</span>
+                  <strong>${money(summary.total)} <small>دولار</small></strong>
+                </span>
+                <span class="customer-financial-card customer-financial-card--paid">
+                  <span class="customer-financial-label">المسدد</span>
+                  <strong>${money(summary.paid)} <small>دولار</small></strong>
+                </span>
+                <span class="customer-financial-card customer-financial-card--remaining ${summary.remaining <= 0.00001 ? 'is-clear' : 'is-due'}">
+                  <span class="customer-financial-label">الباقي</span>
+                  <strong>${money(summary.remaining)} <small>دولار</small></strong>
+                </span>
+              </span>
+            </button>
+          </article>
+        `
+      }).join('')}
     </section>
   ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${customers.length ? 'لا توجد نتائج' : 'ابدأ بإضافة أول زبون'}</h2><p>${customers.length ? 'جرّب كلمة بحث مختلفة.' : 'أضف اسم الزبون ورقم الهاتف والعنوان والملاحظات.'}</p></div>`
   content.querySelectorAll<HTMLButtonElement>('[data-edit-customer]').forEach((button) => {
@@ -859,12 +930,13 @@ function renderCustomerEditor(existing?: Customer) {
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     <p class="eyebrow">${existing ? 'تعديل الزبون' : 'زبون جديد'}</p>
     <h2>${existing ? escapeHtml(existing.name) : 'إضافة زبون'}</h2>
-    <form id="customer-form" class="service-form">
+    <form id="customer-form" class="service-form customer-form">
       <label>اسم الزبون<input name="name" maxlength="100" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="اسم الزبون"></label>
       <label>رقم الهاتف<input name="phone" type="tel" maxlength="30" value="${existing ? escapeHtml(existing.phone) : ''}" placeholder="رقم الهاتف"></label>
       <label>العنوان<input name="address" maxlength="150" value="${existing ? escapeHtml(existing.address) : ''}" placeholder="عنوان الزبون"></label>
-      <label>ملاحظات<textarea name="notes" maxlength="400" rows="3" placeholder="ملاحظات">${existing ? escapeHtml(existing.notes) : ''}</textarea></label>
-      <p class="modal-error" id="customer-error"></p>
+      <label>الحي<input name="neighborhood" maxlength="100" value="${existing ? escapeHtml(existing.neighborhood) : ''}" placeholder="الحي"></label>
+      <label class="customer-notes-field">ملاحظات<textarea name="notes" maxlength="400" rows="3" placeholder="ملاحظات">${existing ? escapeHtml(existing.notes) : ''}</textarea></label>
+      <p class="modal-error" id="customer-error" role="alert" aria-live="polite"></p>
       <div class="modal-actions">
         ${existing ? '<button class="danger-button" id="delete-customer" type="button">حذف الزبون</button>' : '<button class="secondary-button" id="cancel-customer" type="button">إلغاء</button>'}
         <button class="primary-button" type="submit">${existing ? 'حفظ التعديل' : 'حفظ الزبون'}</button>
@@ -873,18 +945,46 @@ function renderCustomerEditor(existing?: Customer) {
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
   element.querySelector('#cancel-customer')?.addEventListener('click', () => element.remove())
   const form = element.querySelector<HTMLFormElement>('#customer-form')!
+  const error = element.querySelector<HTMLElement>('#customer-error')!
+  const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]')!
+  const phoneInput = form.querySelector<HTMLInputElement>('input[name="phone"]')!
+  const addressInput = form.querySelector<HTMLInputElement>('input[name="address"]')!
+  const neighborhoodInput = form.querySelector<HTMLInputElement>('input[name="neighborhood"]')!
+  const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]')!
   let deleteConfirmationActive = false
+  let savingCustomer = false
+  const updateNeighborhoodAvailability = (clearWhenDisabled = false) => {
+    const hasAddress = Boolean(addressInput.value.trim())
+    if (!hasAddress && clearWhenDisabled) neighborhoodInput.value = ''
+    neighborhoodInput.disabled = !hasAddress
+  }
+  const updateCustomerIdentityWarning = () => {
+    if (deleteConfirmationActive || savingCustomer) return
+    const name = nameInput.value.trim()
+    const identityMatch = name
+      ? findCustomerIdentityMatch(name, phoneInput.value, addressInput.value, neighborhoodInput.value, existing?.id)
+      : null
+    error.textContent = identityMatch ? customerIdentityMessage(identityMatch, 'customer') : ''
+    submitButton.disabled = !name || Boolean(identityMatch)
+  }
+  updateNeighborhoodAvailability()
+  ;[nameInput, phoneInput, neighborhoodInput].forEach((input) => {
+    input.addEventListener('input', updateCustomerIdentityWarning)
+  })
+  addressInput.addEventListener('input', () => {
+    updateNeighborhoodAvailability(true)
+    updateCustomerIdentityWarning()
+  })
+  updateCustomerIdentityWarning()
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
-    const error = element.querySelector<HTMLElement>('#customer-error')!
     if (existing && deleteConfirmationActive) {
-      const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!
-      submit.disabled = true
+      submitButton.disabled = true
       try {
         await deleteDoc(doc(db, 'users', dataUserId, 'customers', existing.id))
         element.remove()
       } catch (deleteError) {
-        submit.disabled = false
+        submitButton.disabled = false
         error.textContent = friendlyError(deleteError)
       }
       return
@@ -893,9 +993,10 @@ function renderCustomerEditor(existing?: Customer) {
     const name = String(data.get('name') || '').trim()
     const phone = String(data.get('phone') || '').trim()
     const address = String(data.get('address') || '').trim()
+    const neighborhood = neighborhoodInput.value.trim()
     const notes = String(data.get('notes') || '').trim()
     if (!name) { error.textContent = 'أدخل اسم الزبون.'; return }
-    const identityMatch = findCustomerIdentityMatch(name, phone, address, existing?.id)
+    const identityMatch = findCustomerIdentityMatch(name, phone, address, neighborhood, existing?.id)
     if (identityMatch) {
       error.textContent = customerIdentityMessage(identityMatch, 'customer')
       return
@@ -905,25 +1006,26 @@ function renderCustomerEditor(existing?: Customer) {
       name,
       phone,
       address,
+      neighborhood,
       notes,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     }
-    const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!
-    submit.disabled = true
+    savingCustomer = true
+    submitButton.disabled = true
     try {
       if (existing) await updateDoc(doc(db, 'users', dataUserId, 'customers', existing.id), documentData)
       else await addDoc(collection(db, 'users', dataUserId, 'customers'), documentData)
       element.remove()
     } catch (saveError) {
-      submit.disabled = false
-      error.textContent = friendlyError(saveError)
+      savingCustomer = false
+      updateCustomerIdentityWarning()
+      if (!error.textContent) error.textContent = friendlyError(saveError)
     }
   })
   element.querySelector('#delete-customer')?.addEventListener('click', () => {
     if (!existing) return
     const deleteButton = element.querySelector<HTMLButtonElement>('#delete-customer')!
-    const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]')!
     deleteConfirmationActive = !deleteConfirmationActive
     if (deleteConfirmationActive) {
       deleteButton.textContent = 'إلغاء'
@@ -938,6 +1040,7 @@ function renderCustomerEditor(existing?: Customer) {
     submitButton.textContent = 'حفظ التعديل'
     submitButton.className = 'primary-button'
     element.querySelector('#customer-error')!.textContent = ''
+    updateCustomerIdentityWarning()
   })
 }
 
@@ -1639,6 +1742,7 @@ type InvoiceExportData = {
   customerName: string
   customerPhone: string
   customerAddress: string
+  customerNeighborhood: string
   responsibleTeacherName: string
   upfrontPayment: number | null
   upfrontPaymentDate: string
@@ -3070,6 +3174,7 @@ function invoiceRecordToExportData(record: InvoiceRecord): InvoiceExportData {
     customerName: record.customerName || '',
     customerPhone: record.customerPhone || '',
     customerAddress: record.customerAddress || '',
+    customerNeighborhood: customers.find((customer) => customer.id === record.customerId)?.neighborhood || '',
     responsibleTeacherName: record.responsibleTeacherName || '',
     upfrontPayment: lastPayment ? lastPayment.amount : null,
     upfrontPaymentDate: lastPayment?.date || '',
@@ -3274,13 +3379,13 @@ async function saveExportedInvoiceRecord(
     enteredCustomerName,
     data.customerPhone,
     data.customerAddress,
+    data.customerNeighborhood,
     currentLinkedCustomer?.id,
   )
-  if (identityMatch && identityMatch.kind !== 'exact') {
+  if (identityMatch) {
     throw new CustomerIdentityError(customerIdentityMessage(identityMatch, 'invoice'))
   }
   const matchingCustomer = currentLinkedCustomer
-    || (identityMatch?.kind === 'exact' ? identityMatch.customer : undefined)
   const newCustomerRef = enteredCustomerName && !matchingCustomer
     ? doc(collection(db, 'users', ownerId, 'customers'))
     : null
@@ -3291,6 +3396,7 @@ async function saveExportedInvoiceRecord(
     name: enteredCustomerName,
     phone: data.customerPhone.trim(),
     address: data.customerAddress.trim(),
+    neighborhood: data.customerNeighborhood.trim(),
     notes: '',
     createdAt: now,
     updatedAt: now,
@@ -3375,6 +3481,7 @@ function openInvoiceCustomerExportDialog(
     editableItems?: StoredInvoiceEditableItem[]
     payments?: InvoicePayment[]
     mode?: 'export-save' | 'save-correction' | 'export-only'
+    onInvoiceSaved?: () => void
   },
 ) {
   const mode = context?.mode || 'export-save'
@@ -3406,7 +3513,7 @@ function openInvoiceCustomerExportDialog(
       </div>` : `
       <div class="invoice-customer-fields">
         <div class="invoice-customer-name-field">
-          <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
+          <label for="invoice-customer-export-name">اسم الزبون <span>(مطلوب)</span></label>
           <div class="invoice-customer-name-control">
             <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="اسم الزبون" autocomplete="name">
             <button type="button" class="invoice-customer-picker-trigger" aria-label="اختيار زبون مسجل" title="اختيار زبون مسجل">
@@ -3419,6 +3526,9 @@ function openInvoiceCustomerExportDialog(
         </label>
         <label for="invoice-customer-export-address">عنوان الزبون <span>(اختياري)</span>
           <input id="invoice-customer-export-address" type="text" maxlength="100" placeholder="عنوان الزبون">
+        </label>
+        <label for="invoice-customer-export-neighborhood">الحي <span>(اختياري)</span>
+          <input id="invoice-customer-export-neighborhood" type="text" maxlength="100" placeholder="الحي" disabled>
         </label>
         <label for="invoice-responsible-teacher-name">اسم المعلم المسؤول <span>(اختياري)</span>
           <input id="invoice-responsible-teacher-name" type="text" maxlength="80" placeholder="اسم المعلم المسؤول">
@@ -3455,6 +3565,7 @@ function openInvoiceCustomerExportDialog(
           <textarea id="invoice-export-note" maxlength="300" rows="3" placeholder="أدخل ملاحظة اختيارية لتظهر في أسفل الفاتورة">${escapeHtml(data.exportNote || '')}</textarea>
         </label>` : ''}
       </div>
+      ${allowDataEdit ? '<p class="invoice-customer-identity-warning" data-invoice-customer-warning role="alert" aria-live="polite" hidden></p>' : ''}
       <div class="invoice-inline-preview" data-invoice-inline-preview hidden>
         <div class="invoice-export-preview-wrap" data-invoice-inline-pages></div>
         <p class="invoice-export-status" data-invoice-inline-status aria-live="polite"></p>
@@ -3469,11 +3580,13 @@ function openInvoiceCustomerExportDialog(
   const nameInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-name')
   const phoneInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-phone')
   const addressInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-address')
+  const neighborhoodInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-neighborhood')
   const responsibleTeacherInput = backdrop.querySelector<HTMLInputElement>('#invoice-responsible-teacher-name')
   const customerPickerButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-picker-trigger')
   const percentageInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-percentage')
   const amountInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-amount')
   const exportNoteInput = backdrop.querySelector<HTMLTextAreaElement>('#invoice-export-note')
+  const customerIdentityWarning = backdrop.querySelector<HTMLElement>('[data-invoice-customer-warning]')
   const numberLabel = backdrop.querySelector<HTMLElement>('.invoice-export-number')!
   const previewSection = backdrop.querySelector<HTMLElement>('[data-invoice-inline-preview]')!
   const previewPages = backdrop.querySelector<HTMLElement>('[data-invoice-inline-pages]')!
@@ -3498,14 +3611,24 @@ function openInvoiceCustomerExportDialog(
   let confirmingExport = false
   let committedInvoiceNumber: string | null = fixedInvoiceNumber
   let selectedCustomerId = data.customerId
+  const initiallySelectedCustomer = selectedCustomerId
+    ? customers.find((customer) => customer.id === selectedCustomerId)
+    : undefined
+  if (selectedCustomerId && !data.customerNeighborhood) {
+    data.customerNeighborhood = initiallySelectedCustomer?.neighborhood || ''
+  }
   let selectedCustomerName = selectedCustomerId
-    ? data.customerName.trim() || customers.find((customer) => customer.id === selectedCustomerId)?.name || ''
+    ? data.customerName.trim() || initiallySelectedCustomer?.name || ''
     : ''
   let closeCustomerPicker: ((restoreFocus?: boolean) => void) | null = null
 
   if (nameInput) nameInput.value = data.customerName || ''
   if (phoneInput) phoneInput.value = data.customerPhone || ''
   if (addressInput) addressInput.value = data.customerAddress || ''
+  if (neighborhoodInput) {
+    neighborhoodInput.value = data.customerNeighborhood || ''
+    neighborhoodInput.disabled = Boolean(selectedCustomerId) || !Boolean(data.customerAddress.trim())
+  }
   if (selectedCustomerId) {
     if (phoneInput) phoneInput.disabled = true
     if (addressInput) addressInput.disabled = true
@@ -3579,6 +3702,7 @@ function openInvoiceCustomerExportDialog(
       data.customerName = nameInput?.value.trim() || ''
       data.customerPhone = phoneInput?.value.trim() || ''
       data.customerAddress = addressInput?.value.trim() || ''
+      data.customerNeighborhood = neighborhoodInput?.value.trim() || ''
       data.customerId = selectedCustomerId
       data.responsibleTeacherName = responsibleTeacherInput?.value.trim() || ''
       data.discount = discount
@@ -3616,6 +3740,35 @@ function openInvoiceCustomerExportDialog(
       void renderPreview()
     }, 100)
   }
+  const updateCustomerIdentityWarning = () => {
+    if (!customerIdentityWarning) return
+    const customerName = nameInput?.value.trim() || ''
+    const linkedCustomer = selectedCustomerId
+      ? customers.find((customer) => customer.id === selectedCustomerId)
+      : undefined
+    const identityMatch = findCustomerIdentityMatch(
+      customerName,
+      phoneInput?.value || '',
+      addressInput?.value || '',
+      neighborhoodInput?.value || '',
+      linkedCustomer?.id,
+    )
+    const warningMessage = !customerName
+      ? 'اسم الزبون مطلوب لحفظ الفاتورة. أدخل اسمًا جديدًا أو اختر زبونًا مسجلًا من السهم داخل خانة الاسم.'
+      : identityMatch
+        ? customerIdentityMessage(identityMatch, 'invoice')
+        : ''
+    customerIdentityWarning.hidden = !warningMessage
+    customerIdentityWarning.textContent = warningMessage
+    confirmButton.disabled = confirmingExport || !customerName || Boolean(identityMatch)
+  }
+  const updateNeighborhoodAvailability = (clearWhenDisabled = false) => {
+    const hasAddress = Boolean(addressInput?.value.trim())
+    if (!hasAddress && clearWhenDisabled && neighborhoodInput) neighborhoodInput.value = ''
+    if (neighborhoodInput) {
+      neighborhoodInput.disabled = Boolean(selectedCustomerId) || !hasAddress
+    }
+  }
   customerPickerButton?.addEventListener('click', () => {
     if (closeCustomerPicker) return
     const pickerBackdrop = document.createElement('div')
@@ -3642,7 +3795,7 @@ function openInvoiceCustomerExportDialog(
     const renderCustomers = () => {
       const search = searchInput.value.trim().toLocaleLowerCase('ar')
       const visibleCustomers = [...customers]
-        .filter((customer) => [customer.name, customer.phone, customer.address]
+        .filter((customer) => [customer.name, customer.phone, customer.address, customer.neighborhood]
           .join(' ')
           .toLocaleLowerCase('ar')
           .includes(search))
@@ -3654,6 +3807,7 @@ function openInvoiceCustomerExportDialog(
             <span class="invoice-customer-picker-contact">
               <span>${customer.phone ? escapeHtml(customer.phone) : 'بدون رقم هاتف'}</span>
               ${customer.address ? `<span class="invoice-customer-picker-contact-separator" aria-hidden="true">|</span><span class="invoice-customer-picker-address">${escapeHtml(customer.address)}</span>` : ''}
+              ${customer.neighborhood ? `<span class="invoice-customer-picker-contact-separator" aria-hidden="true">|</span><span class="invoice-customer-picker-address">${escapeHtml(customer.neighborhood)}</span>` : ''}
             </span>
           </span>
           <span class="invoice-customer-picker-option-arrow" aria-hidden="true">‹</span>
@@ -3681,12 +3835,19 @@ function openInvoiceCustomerExportDialog(
       if (!customer || !nameInput || !phoneInput || !addressInput) return
       selectedCustomerId = customer.id
       selectedCustomerName = customer.name
+      linkedExistingCustomer = true
       data.customerId = customer.id
+      data.customerNeighborhood = customer.neighborhood
       nameInput.value = customer.name
       phoneInput.value = customer.phone
       addressInput.value = customer.address
+      if (neighborhoodInput) {
+        neighborhoodInput.value = customer.neighborhood
+        neighborhoodInput.disabled = true
+      }
       phoneInput.disabled = true
       addressInput.disabled = true
+      updateCustomerIdentityWarning()
       invalidatePreview()
       closePicker()
     })
@@ -3741,6 +3902,7 @@ function openInvoiceCustomerExportDialog(
       nameInput,
       phoneInput,
       addressInput,
+      neighborhoodInput,
       customerPickerButton,
       responsibleTeacherInput,
       percentageInput,
@@ -3753,6 +3915,9 @@ function openInvoiceCustomerExportDialog(
     })
     if (phoneInput) phoneInput.disabled = disabled || Boolean(selectedCustomerId)
     if (addressInput) addressInput.disabled = disabled || Boolean(selectedCustomerId)
+    if (neighborhoodInput) {
+      neighborhoodInput.disabled = disabled || Boolean(selectedCustomerId) || !Boolean(addressInput?.value.trim())
+    }
     if (!disabled) renderDiscountSummary()
   }
   modeButtons.forEach((modeButton) => {
@@ -3785,6 +3950,7 @@ function openInvoiceCustomerExportDialog(
     if (selectedCustomerId && nameInput.value.trim() !== selectedCustomerName) {
       selectedCustomerId = null
       selectedCustomerName = ''
+      linkedExistingCustomer = false
       data.customerId = null
       if (phoneInput) {
         phoneInput.value = ''
@@ -3794,13 +3960,29 @@ function openInvoiceCustomerExportDialog(
         addressInput.value = ''
         addressInput.disabled = false
       }
+      if (neighborhoodInput) neighborhoodInput.value = ''
+      updateNeighborhoodAvailability()
     }
+    updateCustomerIdentityWarning()
     invalidatePreview()
   })
-  ;[phoneInput, addressInput, responsibleTeacherInput].forEach((input) =>
-    input?.addEventListener('input', invalidatePreview))
+  phoneInput?.addEventListener('input', () => {
+    updateCustomerIdentityWarning()
+    invalidatePreview()
+  })
+  addressInput?.addEventListener('input', () => {
+    updateNeighborhoodAvailability(true)
+    updateCustomerIdentityWarning()
+    invalidatePreview()
+  })
+  neighborhoodInput?.addEventListener('input', () => {
+    updateCustomerIdentityWarning()
+    invalidatePreview()
+  })
+  responsibleTeacherInput?.addEventListener('input', invalidatePreview)
   formatInputs.forEach((input) => input.addEventListener('change', invalidatePreview))
   exportNoteInput?.addEventListener('input', invalidatePreview)
+  updateCustomerIdentityWarning()
   previewButton.addEventListener('click', () => {
     if (!previewSection.hidden) {
       hidePreview()
@@ -3834,8 +4016,16 @@ function openInvoiceCustomerExportDialog(
   })
   let exportedSuccessfully = false
   let savedSuccessfully = false
-  let linkedExistingCustomer = false
+  let linkedExistingCustomer = Boolean(selectedCustomerId)
   const resolveInvoiceCustomer = () => {
+    if (!data.customerName.trim()) {
+      if (customerIdentityWarning) {
+        customerIdentityWarning.textContent = 'اسم الزبون مطلوب لحفظ الفاتورة. أدخل اسمًا جديدًا أو اختر زبونًا مسجلًا من السهم داخل خانة الاسم.'
+        customerIdentityWarning.hidden = false
+      }
+      confirmButton.disabled = true
+      return false
+    }
     const linkedCustomer = selectedCustomerId
       ? customers.find((customer) => customer.id === selectedCustomerId)
       : undefined
@@ -3843,33 +4033,17 @@ function openInvoiceCustomerExportDialog(
       data.customerName,
       data.customerPhone,
       data.customerAddress,
+      data.customerNeighborhood,
       linkedCustomer?.id,
     )
-    if (identityMatch && identityMatch.kind !== 'exact') {
+    if (identityMatch) {
       const message = customerIdentityMessage(identityMatch, 'invoice')
-      previewStatus.textContent = message
-      showToast(message)
+      if (customerIdentityWarning) {
+        customerIdentityWarning.textContent = message
+        customerIdentityWarning.hidden = false
+      }
+      confirmButton.disabled = true
       return false
-    }
-    if (identityMatch?.kind === 'exact') {
-      const customer = identityMatch.customer
-      selectedCustomerId = customer.id
-      selectedCustomerName = customer.name
-      data.customerId = customer.id
-      data.customerName = customer.name
-      data.customerPhone = customer.phone
-      data.customerAddress = customer.address
-      if (nameInput) nameInput.value = customer.name
-      if (phoneInput) {
-        phoneInput.value = customer.phone
-        phoneInput.disabled = true
-      }
-      if (addressInput) {
-        addressInput.value = customer.address
-        addressInput.disabled = true
-      }
-      linkedExistingCustomer = true
-      showToast(customerIdentityMessage(identityMatch, 'invoice'))
     }
     return true
   }
@@ -3888,6 +4062,7 @@ function openInvoiceCustomerExportDialog(
     closeButton.disabled = true
     cancelButton.disabled = true
     if (!exportedSuccessfully && !committedInvoiceNumber) setFormDisabled(true)
+    let identitySaveError = false
     try {
       if (dataUserId !== ownerId) throw new Error('Invoice owner changed before export confirmation')
 
@@ -3928,6 +4103,7 @@ function openInvoiceCustomerExportDialog(
         await saveExportedInvoiceRecord(ownerId, data, context?.editableItems || [], { sourceRecord: context?.sourceRecord, payments: context?.payments })
         savedSuccessfully = true
         closeDialog()
+        context?.onInvoiceSaved?.()
         showToast(linkedExistingCustomer
           ? 'تم حفظ الفاتورة وربطها بالزبون المسجل.'
           : 'تم حفظ الفاتورة في السجل بنجاح.')
@@ -3968,8 +4144,11 @@ function openInvoiceCustomerExportDialog(
     } catch (error) {
       console.error('Failed to confirm invoice export/save:', error)
       if (error instanceof CustomerIdentityError) {
-        previewStatus.textContent = error.message
-        showToast(error.message)
+        identitySaveError = true
+        if (customerIdentityWarning) {
+          customerIdentityWarning.textContent = error.message
+          customerIdentityWarning.hidden = false
+        }
       } else if (isExportSave && committedInvoiceNumber) {
         previewStatus.textContent = 'تعذر حفظ الفاتورة في السجل. يمكنك الضغط على "حفظ الفاتورة" لإعادة المحاولة بنفس الرقم.'
         showToast('تعذر حفظ الفاتورة في السجل.')
@@ -3982,7 +4161,11 @@ function openInvoiceCustomerExportDialog(
     } finally {
       confirmingExport = false
       if (backdrop.isConnected && !savedSuccessfully) {
-        if (mode === 'export-only' || mode === 'save-correction') {
+        if (identitySaveError) {
+          setFormDisabled(false)
+          previewButton.disabled = false
+          confirmButton.textContent = confirmLabel
+        } else if (mode === 'export-only' || mode === 'save-correction') {
           setFormDisabled(false)
           previewButton.disabled = false
           confirmButton.textContent = confirmLabel
@@ -4006,7 +4189,9 @@ function openInvoiceCustomerExportDialog(
         }
         closeButton.disabled = false
         cancelButton.disabled = false
-        confirmButton.disabled = false
+        if (identitySaveError) confirmButton.disabled = true
+        else if (customerIdentityWarning) updateCustomerIdentityWarning()
+        else confirmButton.disabled = false
       }
     }
   })
@@ -4363,6 +4548,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       customerName: '',
       customerPhone: '',
       customerAddress: '',
+      customerNeighborhood: '',
       responsibleTeacherName: '',
       upfrontPayment: null,
       upfrontPaymentDate: '',
@@ -4522,6 +4708,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           data.customerName = sourceRecord.customerName
           data.customerPhone = sourceRecord.customerPhone
           data.customerAddress = sourceRecord.customerAddress
+          data.customerNeighborhood = customers.find((customer) => customer.id === sourceRecord.customerId)?.neighborhood || ''
           data.responsibleTeacherName = sourceRecord.responsibleTeacherName
           data.discount = sourceRecord.discount ? { ...sourceRecord.discount } : null
           data.exportFormat = sourceRecord.exportFormat
@@ -4570,7 +4757,17 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           void getInvoiceNumberCandidate(ownerId).then((invoiceNumber) => {
             if (!element.isConnected || dataUserId !== ownerId) return
             data.invoiceNumber = invoiceNumber
-            openInvoiceCustomerExportDialog(data, ownerId, { sourceRecord, editableItems, payments: savePayments, mode: 'export-save' })
+            openInvoiceCustomerExportDialog(data, ownerId, {
+              sourceRecord,
+              editableItems,
+              payments: savePayments,
+              mode: 'export-save',
+              onInvoiceSaved: () => {
+                element.remove()
+                activeMainSection = 'invoices'
+                renderActiveSection()
+              },
+            })
           }).catch((error: unknown) => {
             console.error('Failed to prepare invoice export:', error)
             showToast('تعذر تجهيز رقم الفاتورة. حاول مجددًا.')

@@ -44,6 +44,23 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
 .auth-header { margin: -6px 0 16px; text-align: center; }
 .auth-header h2 { margin: 0; color: var(--ink); font-size: clamp(22px,4vw,30px); }
 .auth-form, .service-form { display: grid; gap: 15px; }
+.customer-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.customer-form > label { min-width: 0; }
+.customer-form > label input,
+.customer-form > label textarea { min-width: 0; }
+.customer-form input:disabled {
+  border-color: #d7e0e2;
+  background: #edf2f3;
+  color: #78868c;
+  cursor: not-allowed;
+  opacity: 1;
+}
+.customer-form .customer-notes-field,
+.customer-form #customer-error,
+.customer-form .modal-actions { grid-column: 1 / -1; }
 label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; }
 input, select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 11px; outline: 0; background: #fff; color: var(--ink); padding: 13px 14px; font-size: 14px; }
 input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px #007d7918; }
@@ -158,6 +175,11 @@ textarea { resize: vertical; min-height: 82px; }
 .cancel-delete-confirm:hover { background: #d9f0e7; }
 .text-button { background: transparent; color: var(--teal); font-size: 13px; font-weight: 800; }
 .form-error, .modal-error { min-height: 17px; margin: 0; color: var(--coral); font-size: 12px; }
+#customer-form button[type="submit"]:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+  filter: saturate(.55);
+}
 
 .products-page { width: min(100% - 28px, 620px); margin: auto; padding: 0 0 70px; }
 .topbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0,1fr) 42px 42px 42px; align-items: stretch; gap: 8px; padding: 13px 0 12px; background: #f5f7f9ee; backdrop-filter: blur(14px); }
@@ -295,6 +317,98 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.customer-main { gap: 7px; }
+.customer-identity-line {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 7px;
+}
+.customer-identity-line .service-name {
+  align-self: baseline;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.25;
+}
+.customer-identity-separator {
+  color: var(--teal);
+  font-size: 14px;
+  font-weight: 800;
+}
+.customer-address,
+.customer-neighborhood {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.customer-phone {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  direction: ltr;
+  text-align: right;
+}
+.customer-notes {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.customer-financials {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+.customer-financial-card {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  justify-items: center;
+  padding: 8px 6px;
+  border: 1px solid rgba(0, 125, 121, .18);
+  border-radius: 11px;
+  background: linear-gradient(180deg, #edf8f6 0%, #fff 100%);
+  text-align: center;
+}
+.customer-financial-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.customer-financial-card strong {
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.customer-financial-card small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+.customer-financial-card--paid {
+  border-color: rgba(22, 101, 52, .18);
+  background: linear-gradient(180deg, #f3fbf5 0%, #fff 100%);
+}
+.customer-financial-card--paid strong { color: #166534; }
+.customer-financial-card--remaining.is-due {
+  border-color: rgba(146, 64, 14, .18);
+  background: linear-gradient(180deg, #fff9ef 0%, #fff 100%);
+}
+.customer-financial-card--remaining.is-due strong { color: #92400e; }
+.customer-financial-card--remaining.is-clear {
+  border-color: rgba(22, 101, 52, .18);
+  background: linear-gradient(180deg, #f3fbf5 0%, #fff 100%);
+}
+.customer-financial-card--remaining.is-clear strong { color: #166534; }
 .empty-state {
   position: relative;
   display: grid;
@@ -1340,6 +1454,24 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   gap: 8px;
   margin-top: 12px;
 }
+.invoice-customer-identity-warning {
+  margin: 8px 0 0;
+  border: 1px solid #e6a3a0;
+  border-inline-start: 4px solid #c62828;
+  border-radius: 9px;
+  background: #fff1f0;
+  color: #a61b1b;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+.invoice-customer-identity-warning[hidden] { display: none; }
+.invoice-customer-export-confirm:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+  filter: saturate(.55);
+}
 .invoice-export-format,
 .invoice-discount-options {
   display: grid;
@@ -1721,6 +1853,11 @@ body.dark-mode .icon-button { border-color: #2b3b49; background: #18232d; color:
 body.dark-mode input,
 body.dark-mode select,
 body.dark-mode textarea { border-color: #2b3b49; background: #111b24; color: #e6edf3; }
+body.dark-mode .customer-form input:disabled {
+  border-color: #2b3b49;
+  background: #202d37;
+  color: #aab8c5;
+}
 body.dark-mode select {
   background-image: linear-gradient(45deg, transparent 50%, #7de0d3 50%), linear-gradient(135deg, #7de0d3 50%, transparent 50%);
   background-position: calc(100% - 19px) 50%, calc(100% - 13px) 50%;
@@ -1764,6 +1901,32 @@ body.dark-mode .service-price-cell {
   box-shadow: 0 5px 12px rgba(0,0,0,.12);
 }
 body.dark-mode .service-unit { color: #aab8c5; }
+body.dark-mode .customer-address,
+body.dark-mode .customer-neighborhood,
+body.dark-mode .customer-phone,
+body.dark-mode .customer-financial-label,
+body.dark-mode .customer-financial-card small { color: #aab8c5; }
+body.dark-mode .customer-identity-separator { color: #7de0d3; }
+body.dark-mode .customer-financial-card {
+  border-color: #35505f;
+  background: #202d37;
+}
+body.dark-mode .customer-financial-card strong { color: #7de0d3; }
+body.dark-mode .customer-financial-card--paid {
+  border-color: #285d43;
+  background: #19372b;
+}
+body.dark-mode .customer-financial-card--paid strong { color: #86efac; }
+body.dark-mode .customer-financial-card--remaining.is-due {
+  border-color: #704b28;
+  background: #382d20;
+}
+body.dark-mode .customer-financial-card--remaining.is-due strong { color: #fbbf72; }
+body.dark-mode .customer-financial-card--remaining.is-clear {
+  border-color: #285d43;
+  background: #19372b;
+}
+body.dark-mode .customer-financial-card--remaining.is-clear strong { color: #86efac; }
 body.dark-mode .service-price-cell {
   border-color: #35505f;
   background: #193b3a;
@@ -1936,6 +2099,12 @@ body.dark-mode .invoice-customer-export-dialog {
 body.dark-mode .invoice-customer-picker-dialog {
   border-color: #2b3b49;
   background: #18232d;
+}
+body.dark-mode .invoice-customer-identity-warning {
+  border-color: #783b40;
+  border-inline-start-color: #ff7770;
+  background: #352529;
+  color: #ffaaa1;
 }
 body.dark-mode .invoice-customer-picker-header h3,
 body.dark-mode .invoice-customer-picker-option,
