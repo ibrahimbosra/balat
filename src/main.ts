@@ -104,6 +104,8 @@ type InvoiceUnitTotal = {
 }
 
 type InvoiceExportFormat = 'image' | 'image-high' | 'excel'
+const highQualityImageScale = 3
+type ImageExportScale = 1 | typeof highQualityImageScale
 
 type StoredInvoiceDiscount = {
   mode: 'percentage' | 'amount'
@@ -2023,7 +2025,7 @@ async function exportServicesToExcel(button: HTMLButtonElement, rows: ExportServ
 
 async function exportServicesToImage(
   button: HTMLButtonElement,
-  imageScale: 1 | 2,
+  imageScale: ImageExportScale,
   rows: ExportServiceRow[],
   options: { customerName?: string; customerPhone?: string; customerAddress?: string; previewOnly?: boolean } = {},
 ) {
@@ -2206,7 +2208,7 @@ async function exportServicesToImage(
       const link = document.createElement('a')
       link.href = url
       const suffix = pageCount > 1 ? `-صفحة-${pageIndex + 1}-من-${pageCount}` : ''
-      link.download = `قائمة-الخدمات-${imageScale === 2 ? 'فائقة-الجودة-' : ''}${exportDate}${suffix}.png`
+      link.download = `قائمة-الخدمات-${imageScale === highQualityImageScale ? 'فائقة-الجودة-' : ''}${exportDate}${suffix}.png`
       document.body.append(link)
       window.setTimeout(() => {
         link.click()
@@ -2224,7 +2226,7 @@ async function exportServicesToImage(
   }
 }
 
-function openImageExportPreview(imageScale: 1 | 2, rows: ExportServiceRow[]) {
+function openImageExportPreview(imageScale: ImageExportScale, rows: ExportServiceRow[]) {
   if (!rows.length) {
     showToast('لا توجد خدمات محددة للتصدير.')
     return
@@ -2300,7 +2302,7 @@ function invoicePageRowCounts(totalRows: number) {
   return pageRowCounts
 }
 
-async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2) {
+async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageExportScale) {
   await document.fonts.ready
   await Promise.all([
     document.fonts.load('600 14px Cairo'),
@@ -2733,13 +2735,13 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
 async function exportInvoiceImage(
   button: HTMLButtonElement,
   data: InvoiceExportData,
-  imageScale: 1 | 2,
+  imageScale: ImageExportScale,
 ) {
   button.disabled = true
   try {
     const files = await renderInvoiceImageFiles(data, imageScale)
     downloadInvoiceFiles(files)
-    showToast(imageScale === 2 ? 'تم تصدير الفاتورة كصورة فائقة.' : 'تم تصدير الفاتورة كصورة.')
+    showToast(imageScale === highQualityImageScale ? 'تم تصدير الفاتورة كصورة فائقة.' : 'تم تصدير الفاتورة كصورة.')
     return true
   } catch (error) {
     console.error('Failed to export invoice image:', error)
@@ -2750,7 +2752,7 @@ async function exportInvoiceImage(
   }
 }
 
-async function renderInvoiceImageFiles(data: InvoiceExportData, imageScale: 1 | 2): Promise<File[]> {
+async function renderInvoiceImageFiles(data: InvoiceExportData, imageScale: ImageExportScale): Promise<File[]> {
   const canvases = await renderInvoiceCanvases(data, imageScale)
   return Promise.all(canvases.map((canvas, pageIndex) => new Promise<File>((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -2825,6 +2827,18 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     for (let columnNumber = tableColumnCount + 1; columnNumber <= invoiceColumnCount; columnNumber += 1) {
       worksheet.getColumn(columnNumber).width = 12
     }
+    const columnWidth = (columnNumber: number) => Number(worksheet.getColumn(columnNumber).width || 12)
+    const wrappedLineCount = (text: string, width: number) => text.split(/\r?\n/).reduce(
+      (total, line) => total + Math.max(1, Math.ceil(Array.from(line).length / Math.max(1, width - 2))),
+      0,
+    )
+    const estimatedRowHeight = (text: string, width: number, minimum = 24) =>
+      Math.min(390, Math.max(minimum, wrappedLineCount(text, width) * 17 + 6))
+    const invoiceSheetWidth = Array.from({ length: invoiceColumnCount }, (_, index) => columnWidth(index + 1))
+      .reduce((total, width) => total + width, 0)
+    const numberFormat = (value: number) => Number.isInteger(value) ? '#,##0' : '#,##0.##'
+    const quantityNumberFormat = (value: number) => Number.isInteger(value) ? '#,##0' : '#,##0.######'
+    const currencyNumberFormat = (value: number) => `${numberFormat(value)} "دولار"`
     const lastColumn = worksheet.getColumn(invoiceColumnCount).letter
     worksheet.mergeCells(`A1:${lastColumn}1`)
     worksheet.mergeCells(`A2:${lastColumn}2`)
@@ -2836,7 +2850,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     worksheet.getCell('A3').value = `فاتورة رقم ${data.invoiceNumber}`
     worksheet.getRow(3).height = 24
     worksheet.getCell('A3').font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFA64B37' } }
-    worksheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' }
+    worksheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
     let metadataRowNumber = 4
     const customerSegments = customerDetailsSegments(data)
     if (customerSegments.length) {
@@ -2848,8 +2862,8 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           font: { name: 'Arial', color: { argb: red ? 'FFC62828' : 'FF000000' } },
         })),
       }
-      cell.alignment = { horizontal: 'right', vertical: 'middle' }
-      worksheet.getRow(metadataRowNumber).height = 28
+      cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
+      worksheet.getRow(metadataRowNumber).height = estimatedRowHeight(customerSegments.map(({ text }) => text).join(''), invoiceSheetWidth, 28)
       metadataRowNumber += 1
     }
     const teacherSegments = responsibleTeacherSegments(data.responsibleTeacherName)
@@ -2862,8 +2876,8 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           font: { name: 'Arial', color: { argb: red ? 'FFC62828' : 'FF000000' } },
         })),
       }
-      cell.alignment = { horizontal: 'right', vertical: 'middle' }
-      worksheet.getRow(metadataRowNumber).height = 28
+      cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
+      worksheet.getRow(metadataRowNumber).height = estimatedRowHeight(teacherSegments.map(({ text }) => text).join(''), invoiceSheetWidth, 28)
       metadataRowNumber += 1
     }
     worksheet.mergeCells(`A${metadataRowNumber}:${lastColumn}${metadataRowNumber}`)
@@ -2873,7 +2887,12 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
         { text: formatInvoicePrintDateTime(data.exportDate), font: { name: 'Arial', color: { argb: 'FFC62828' } } },
       ],
     }
-    worksheet.getRow(metadataRowNumber).height = 27
+    worksheet.getCell(`A${metadataRowNumber}`).alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
+    worksheet.getRow(metadataRowNumber).height = estimatedRowHeight(
+      `تاريخ الإصدار: ${formatInvoicePrintDateTime(data.exportDate)}`,
+      invoiceSheetWidth,
+      27,
+    )
     const headerRowNumber = metadataRowNumber + 1
     worksheet.pageSetup.printTitlesRow = `${headerRowNumber}:${headerRowNumber}`
     const headerRow = worksheet.getRow(headerRowNumber)
@@ -2923,27 +2942,40 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       }
     })
     const dataEndRow = headerRowNumber + serviceSlotCount
-    worksheet.autoFilter = { from: `A${headerRowNumber}`, to: `${worksheet.getColumn(tableColumnCount).letter}${dataEndRow}` }
-    worksheet.views = [{ state: 'frozen', ySplit: headerRowNumber, rightToLeft: true }]
+    worksheet.views = [{ state: 'frozen', ySplit: headerRowNumber, rightToLeft: true, showGridLines: false }]
     for (let rowNumber = headerRowNumber; rowNumber <= dataEndRow; rowNumber += 1) {
       const row = worksheet.getRow(rowNumber)
       const slotRow = rowNumber > headerRowNumber ? slotRows[rowNumber - headerRowNumber - 1] : undefined
       const isCancelled = slotRow?.cancelled === true
-      row.height = rowNumber === headerRowNumber ? 28 : 16
+      let rowLineCount = 1
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        cell.alignment = rowNumber === headerRowNumber
-          ? { horizontal: 'center', vertical: 'middle', wrapText: true }
-          : { horizontal: 'center', vertical: 'middle', shrinkToFit: true }
+        const isNumericCell = rowNumber !== headerRowNumber
+          && [1, 4, 5, 6].includes(colNumber)
+          && !(isCancelled && colNumber === 6)
+        const cellText = String(cell.value ?? '')
+        rowLineCount = Math.max(rowLineCount, wrappedLineCount(cellText, columnWidth(colNumber)))
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle',
+          wrapText: true,
+          readingOrder: isNumericCell && colNumber !== 6 ? 'ltr' : 'rtl',
+        }
         const textColor = rowNumber === headerRowNumber ? 'FFFFFFFF' : (isCancelled ? 'FF8A97A3' : 'FF203044')
         cell.font = {
           name: 'Arial',
           size: rowNumber === headerRowNumber ? 11 : 10,
-          bold: true,
+          bold: rowNumber === headerRowNumber,
           color: { argb: textColor },
           strike: isCancelled && rowNumber !== headerRowNumber && colNumber !== 1 && colNumber !== 6,
         }
         if (isCancelled && rowNumber !== headerRowNumber && colNumber === 6) {
           cell.numFmt = '@'
+        } else if (rowNumber !== headerRowNumber && typeof cell.value === 'number') {
+          cell.numFmt = colNumber === 6
+            ? currencyNumberFormat(cell.value)
+            : colNumber === 4
+              ? quantityNumberFormat(cell.value)
+              : numberFormat(cell.value)
         }
         cell.fill = {
           type: 'pattern',
@@ -2951,27 +2983,27 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           fgColor: { argb: rowNumber === headerRowNumber ? 'FF007D79' : rowNumber % 2 === 0 ? 'FFF3F9F8' : 'FFFFFFFF' },
         }
         cell.border = {
-          top: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FF000000' } },
-          right: { style: 'thin', color: { argb: 'FF000000' } },
+          top: { style: 'thin', color: { argb: 'FFE3E9ED' } },
+          bottom: { style: 'thin', color: { argb: 'FFE3E9ED' } },
+          left: { style: 'thin', color: { argb: 'FFE3E9ED' } },
+          right: { style: 'thin', color: { argb: 'FFE3E9ED' } },
         }
       })
+      row.height = rowNumber === headerRowNumber ? 32 : Math.max(24, rowLineCount * 17 + 6)
     }
-    worksheet.getColumn('quantity').numFmt = '0.######'
-    worksheet.getColumn('unitPrice').numFmt = '0.00'
-    worksheet.getColumn('total').numFmt = '0.00 "دولار"'
+    worksheet.getColumn('quantity').numFmt = '#,##0'
+    worksheet.getColumn('unitPrice').numFmt = '#,##0'
+    worksheet.getColumn('total').numFmt = currencyNumberFormat(0)
     worksheet.getCell('A1').font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF203044' } }
-    worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
     worksheet.getCell('A2').font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF007D79' } }
-    worksheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
     worksheet.getCell('A3').font = { name: 'Arial', size: 11, color: { argb: 'FF667782' } }
-    worksheet.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
 
     const finalTotal = data.total - (data.discount?.amount || 0)
     const hasDiscount = Boolean(data.discount?.amount)
     let summaryRowNumber = dataEndRow + 2
-    const summaryLabelLastColumn = worksheet.getColumn(invoiceColumnCount - 1).letter
     const addSummaryRow = (
       label: string,
       value: number,
@@ -2979,10 +3011,18 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       sublabel?: string,
       highlightValue = false,
     ) => {
-      worksheet.mergeCells(`A${summaryRowNumber}:${summaryLabelLastColumn}${summaryRowNumber}`)
+      const valueStartColumn = Math.floor(invoiceColumnCount / 2) + 1
+      const labelEndColumn = valueStartColumn - 1
+      const valueStartLetter = worksheet.getColumn(valueStartColumn).letter
+      const labelWidth = Array.from({ length: labelEndColumn }, (_, index) => columnWidth(index + 1))
+        .reduce((total, width) => total + width, 0)
+      const valueWidth = Array.from({ length: invoiceColumnCount - valueStartColumn + 1 }, (_, index) =>
+        columnWidth(valueStartColumn + index)).reduce((total, width) => total + width, 0)
+      worksheet.mergeCells(`A${summaryRowNumber}:${worksheet.getColumn(labelEndColumn).letter}${summaryRowNumber}`)
+      worksheet.mergeCells(`${valueStartLetter}${summaryRowNumber}:${lastColumn}${summaryRowNumber}`)
       const row = worksheet.getRow(summaryRowNumber)
       row.getCell(1).value = label
-      row.getCell(invoiceColumnCount).value = sublabel
+      row.getCell(valueStartColumn).value = sublabel
         ? {
           richText: [
             { text: `${money(value)} دولار\n`, font: { name: 'Arial', size: 14, bold: true, color: { argb: 'FF006E69' } } },
@@ -2990,12 +3030,21 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           ],
         }
         : value
-      row.height = sublabel ? 38 : 25
+      row.height = Math.max(
+        estimatedRowHeight(label, labelWidth, 28),
+        estimatedRowHeight(`${money(value)} دولار ${sublabel || ''}`, valueWidth, sublabel ? 40 : 28),
+      )
       row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-        const isHighlightedValue = highlightValue && columnNumber === invoiceColumnCount
+        const isAmountCell = columnNumber >= valueStartColumn
+        const isHighlightedValue = highlightValue && isAmountCell
         cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: color } }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color === 'FFC62828' ? 'FFFFEFED' : 'FFE8F5F2' } }
-        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: Boolean(sublabel) }
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle',
+          wrapText: true,
+          readingOrder: 'rtl',
+        }
         cell.border = {
           top: { style: isHighlightedValue ? 'medium' : 'thin', color: { argb: isHighlightedValue ? 'FFC62828' : 'FFC6A253' } },
           bottom: { style: isHighlightedValue ? 'medium' : 'thin', color: { argb: isHighlightedValue ? 'FFC62828' : 'FFC6A253' } },
@@ -3003,7 +3052,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           right: { style: isHighlightedValue ? 'medium' : 'thin', color: { argb: isHighlightedValue ? 'FFC62828' : 'FFC6A253' } },
         }
       })
-      if (!sublabel) row.getCell(invoiceColumnCount).numFmt = '0.00 "دولار"'
+      if (!sublabel) row.getCell(valueStartColumn).numFmt = currencyNumberFormat(value)
       summaryRowNumber += 1
     }
     const addCenteredFinalTotalRow = () => {
@@ -3023,7 +3072,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       }
       row.getCell(1).value = 'الإجمالي النهائي'
       row.getCell(centerStartColumn).value = finalTotal
-      row.height = 32
+      row.height = estimatedRowHeight(`الإجمالي النهائي ${money(finalTotal)} دولار`, invoiceSheetWidth, 32)
       for (let columnNumber = 1; columnNumber <= invoiceColumnCount; columnNumber += 1) {
         const cell = row.getCell(columnNumber)
         const isAmountCell = columnNumber >= centerStartColumn && columnNumber <= centerEndColumn
@@ -3034,7 +3083,12 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           color: { argb: 'FF006E69' },
         }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5F2' } }
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle',
+          readingOrder: 'rtl',
+          wrapText: true,
+        }
         cell.border = {
           top: { style: isAmountCell ? 'medium' : 'thin', color: { argb: isAmountCell ? 'FFC62828' : 'FFC6A253' } },
           bottom: { style: isAmountCell ? 'medium' : 'thin', color: { argb: isAmountCell ? 'FFC62828' : 'FFC6A253' } },
@@ -3042,7 +3096,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           right: { style: isAmountCell ? 'medium' : 'thin', color: { argb: isAmountCell ? 'FFC62828' : 'FFC6A253' } },
         }
       }
-      row.getCell(centerStartColumn).numFmt = '0.00 "دولار"'
+      row.getCell(centerStartColumn).numFmt = currencyNumberFormat(finalTotal)
       summaryRowNumber += 1
     }
     worksheet.mergeCells(`A${summaryRowNumber}:${lastColumn}${summaryRowNumber}`)
@@ -3052,7 +3106,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     quantityTitleRow.eachCell({ includeEmpty: true }, (cell) => {
       cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
       cell.border = {
         top: { style: 'thin', color: { argb: 'FFC6A253' } },
         bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
@@ -3062,24 +3116,46 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     })
     summaryRowNumber += 1
     if (data.unitTotals.length) {
-      const quantitySummary = data.unitTotals.map(({ unit, quantity, amount }) =>
-        `${invoiceQuantity(quantity)} ${unit} = ${amount === null ? '—' : `${money(amount)} دولار`}`).join('  |  ')
-      worksheet.mergeCells(`A${summaryRowNumber}:${lastColumn}${summaryRowNumber}`)
-      const quantityRow = worksheet.getRow(summaryRowNumber)
-      quantityRow.getCell(1).value = quantitySummary
-      quantityRow.height = 18
-      quantityRow.eachCell({ includeEmpty: true }, (cell) => {
-        cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF006E69' } }
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5F2' } }
-        cell.alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true }
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFC6A253' } },
-          bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
-          left: { style: 'thin', color: { argb: 'FFC6A253' } },
-          right: { style: 'thin', color: { argb: 'FFC6A253' } },
-        }
-      })
-      summaryRowNumber += 1
+      const amountStartColumn = Math.floor(invoiceColumnCount / 2) + 1
+      const labelEndColumn = amountStartColumn - 1
+      const labelWidth = Array.from({ length: labelEndColumn }, (_, index) => columnWidth(index + 1))
+        .reduce((total, width) => total + width, 0)
+      const amountWidth = Array.from({ length: invoiceColumnCount - amountStartColumn + 1 }, (_, index) =>
+        columnWidth(amountStartColumn + index)).reduce((total, width) => total + width, 0)
+      for (const { unit, quantity, amount } of data.unitTotals) {
+        const rowNumber = summaryRowNumber
+        worksheet.mergeCells(`A${rowNumber}:${worksheet.getColumn(labelEndColumn).letter}${rowNumber}`)
+        worksheet.mergeCells(
+          `${worksheet.getColumn(amountStartColumn).letter}${rowNumber}:${lastColumn}${rowNumber}`,
+        )
+        const row = worksheet.getRow(rowNumber)
+        const label = `${invoiceQuantity(quantity)} ${unit}`
+        row.getCell(1).value = label
+        const amountCell = row.getCell(amountStartColumn)
+        amountCell.value = amount === null ? '—' : amount
+        if (amount !== null) amountCell.numFmt = currencyNumberFormat(amount)
+        row.height = Math.max(
+          estimatedRowHeight(label, labelWidth, 28),
+          estimatedRowHeight(amount === null ? '—' : `دولار ${money(amount)}`, amountWidth, 28),
+        )
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF006E69' } }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5F2' } }
+          cell.alignment = {
+            horizontal: 'center',
+            vertical: 'middle',
+            wrapText: true,
+            readingOrder: 'rtl',
+          }
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFC6A253' } },
+            bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
+            left: { style: 'thin', color: { argb: 'FFC6A253' } },
+            right: { style: 'thin', color: { argb: 'FFC6A253' } },
+          }
+        })
+        summaryRowNumber += 1
+      }
     }
     if (hasDiscount && data.discount) {
       addSummaryRow('الإجمالي قبل الخصم', data.total, 'FF006E69')
@@ -3104,7 +3180,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       paymentsTitleRow.eachCell({ includeEmpty: true }, (cell) => {
         cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true }
         cell.border = {
           top: { style: 'thin', color: { argb: 'FFC6A253' } },
           bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
@@ -3117,13 +3193,10 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       const remainingAmount = Number(Math.max(0, finalTotal - paidTotal).toFixed(2))
       const isFullyPaid = remainingAmount <= 0.00001
       const lastPayment = exportPayments[exportPayments.length - 1]
-      const paymentRowNumber = summaryRowNumber
-      const paymentRow = worksheet.getRow(paymentRowNumber)
-      paymentRow.height = 56
       const paymentCards = [
         ...exportPayments.map((payment, index) => ({
           label: exportPayments.length > 1 ? `الدفعة ${index + 1}` : 'الدفعة',
-          value: `${money(payment.amount)} دولار`,
+          amount: payment.amount,
           sublabel: [payment.date ? `التاريخ: ${payment.date}` : '', payment.note || ''].filter(Boolean).join(' — '),
           fill: 'FFF3F9F8',
           labelColor: 'FF006E69',
@@ -3133,7 +3206,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
         })),
         {
           label: 'إجمالي الدفعات',
-          value: `${money(paidTotal)} دولار`,
+          amount: paidTotal,
           sublabel: '',
           fill: 'FFE8F5F2',
           labelColor: 'FF006E69',
@@ -3143,7 +3216,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
         },
         {
           label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
-          value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
+          amount: isFullyPaid ? null : remainingAmount,
           sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
           fill: isFullyPaid ? 'FFECFDF3' : 'FFFFF4E5',
           labelColor: isFullyPaid ? 'FF166534' : 'FFC2410C',
@@ -3152,47 +3225,69 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           settled: isFullyPaid,
         },
       ]
-      const formatPaymentCard = (
-        startColumn: number,
-        endColumn: number,
-        richText: import('exceljs').RichText[],
-        fillColor: string,
-      ) => {
-        const startLetter = worksheet.getColumn(startColumn).letter
-        const endLetter = worksheet.getColumn(endColumn).letter
-        worksheet.mergeCells(`${startLetter}${paymentRowNumber}:${endLetter}${paymentRowNumber}`)
-        const card = paymentRow.getCell(startColumn)
-        card.value = { richText }
-        card.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-        for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
-          const cell = paymentRow.getCell(columnNumber)
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } }
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFC6A253' } },
-            bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
-            left: { style: 'thin', color: { argb: 'FFC6A253' } },
-            right: { style: 'thin', color: { argb: 'FFC6A253' } },
-          }
+      const paymentCardsPerRow = 3
+      for (let offset = 0; offset < paymentCards.length; offset += paymentCardsPerRow) {
+        const cards = paymentCards.slice(offset, offset + paymentCardsPerRow)
+        const renderPaymentRow = (kind: 'label' | 'amount' | 'details') => {
+          const rowNumber = summaryRowNumber
+          const row = worksheet.getRow(rowNumber)
+          let rowHeight = kind === 'label' ? 28 : kind === 'amount' ? 32 : 24
+          cards.forEach((card, cardIndex) => {
+            const startColumn = Math.floor((cardIndex * invoiceColumnCount) / cards.length) + 1
+            const endColumn = Math.max(startColumn, Math.floor(((cardIndex + 1) * invoiceColumnCount) / cards.length))
+            const startLetter = worksheet.getColumn(startColumn).letter
+            const endLetter = worksheet.getColumn(endColumn).letter
+            const cellWidth = Array.from({ length: endColumn - startColumn + 1 }, (_, index) =>
+              columnWidth(startColumn + index)).reduce((total, width) => total + width, 0)
+            worksheet.mergeCells(`${startLetter}${rowNumber}:${endLetter}${rowNumber}`)
+            const cell = row.getCell(startColumn)
+            const isAmount = kind === 'amount'
+            const isDetails = kind === 'details'
+            const value = kind === 'label'
+              ? card.label
+              : isAmount
+                ? card.amount === null ? card.sublabel : card.amount
+                : card.amount === null ? '' : card.sublabel
+            const displayText = typeof value === 'number' ? `${money(value)} دولار` : String(value)
+            cell.value = value
+            cell.font = {
+              name: 'Arial',
+              size: kind === 'label' ? 10 : isDetails || card.amount === null ? 9 : 14,
+              bold: kind === 'label' || (isAmount && card.amount !== null) || (card.amount === null && card.settled),
+              color: {
+                argb: kind === 'label'
+                  ? card.labelColor
+                  : isDetails || card.amount === null
+                    ? card.sublabelColor
+                    : card.valueColor,
+              },
+            }
+            cell.alignment = {
+              horizontal: 'center',
+              vertical: 'middle',
+              wrapText: true,
+              readingOrder: 'rtl',
+            }
+            if (isAmount && card.amount !== null) cell.numFmt = currencyNumberFormat(card.amount)
+            rowHeight = Math.max(rowHeight, estimatedRowHeight(displayText, cellWidth, rowHeight))
+            for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
+              const styledCell = row.getCell(columnNumber)
+              styledCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: card.fill } }
+              styledCell.border = {
+                top: { style: 'thin', color: { argb: 'FFC6A253' } },
+                bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
+                left: { style: 'thin', color: { argb: 'FFC6A253' } },
+                right: { style: 'thin', color: { argb: 'FFC6A253' } },
+              }
+            }
+          })
+          row.height = rowHeight
+          summaryRowNumber += 1
         }
+        renderPaymentRow('label')
+        renderPaymentRow('amount')
+        if (cards.some((card) => card.amount !== null && card.sublabel)) renderPaymentRow('details')
       }
-      const cardCount = paymentCards.length
-      for (let i = 0; i < cardCount; i += 1) {
-        // distribute cards RTL across columns in order: first payment on right, remaining on left
-        const startColumn = Math.floor((i * invoiceColumnCount) / cardCount) + 1
-        const endColumn = Math.max(startColumn, Math.floor(((i + 1) * invoiceColumnCount) / cardCount))
-        const card = paymentCards[cardCount - 1 - i]
-        const richText: import('exceljs').RichText[] = [
-          { text: `${card.label}\n`, font: { name: 'Arial', size: 10, bold: true, color: { argb: card.labelColor } } },
-        ]
-        if (card.value) {
-          richText.push({ text: `${card.value}${card.sublabel ? '\n' : ''}`, font: { name: 'Arial', size: 14, bold: true, color: { argb: card.valueColor } } })
-        }
-        if (card.sublabel) {
-          richText.push({ text: card.sublabel, font: { name: 'Arial', size: card.settled ? 11 : 9, bold: card.settled, color: { argb: card.sublabelColor } } })
-        }
-        formatPaymentCard(startColumn, endColumn, richText, card.fill)
-      }
-      summaryRowNumber += 1
     }
     const exportNote = (data.exportNote || '').trim()
     let cursorRow = summaryRowNumber + 1
@@ -3200,11 +3295,12 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       const noteRowNumber = cursorRow
       worksheet.mergeCells(`A${noteRowNumber}:${lastColumn}${noteRowNumber}`)
       const noteRow = worksheet.getRow(noteRowNumber)
-      noteRow.height = 24
       const noteCell = worksheet.getCell(`A${noteRowNumber}`)
-      noteCell.value = `ملاحظة: ${exportNote}`
+      const noteText = `ملاحظة: ${exportNote}`
+      noteCell.value = noteText
       noteCell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF203044' } }
-      noteCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      noteCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, readingOrder: 'rtl' }
+      noteRow.height = estimatedRowHeight(noteText, invoiceSheetWidth, 28)
       noteRow.eachCell({ includeEmpty: true }, (cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E8' } }
         cell.border = {
@@ -3221,8 +3317,12 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     worksheet.getCell(`A${noticeRowNumber}`).value =
       'تنويه: هذه فاتورة حساب عن أعمال تم تنفيذها، وتوضح قيمة الخدمات المنفذة وفق البيانات أعلاه.'
     worksheet.getCell(`A${noticeRowNumber}`).font = { name: 'Arial', size: 10, color: { argb: 'FFA64B37' } }
-    worksheet.getCell(`A${noticeRowNumber}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-    worksheet.getRow(noticeRowNumber).height = 30
+    worksheet.getCell(`A${noticeRowNumber}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, readingOrder: 'rtl' }
+    worksheet.getRow(noticeRowNumber).height = estimatedRowHeight(
+      String(worksheet.getCell(`A${noticeRowNumber}`).value),
+      invoiceSheetWidth,
+      30,
+    )
     worksheet.headerFooter.oddFooter = '&Cصفحة &P من &N'
     worksheet.pageSetup.printArea = `A1:${lastColumn}${noticeRowNumber}`
 
@@ -4188,7 +4288,7 @@ function openInvoiceCustomerExportDialog(
         await exportInvoiceToExcel(shareButton, data, true)
         return
       }
-      const files = await renderInvoiceImageFiles(data, data.exportFormat === 'image-high' ? 2 : 1)
+      const files = await renderInvoiceImageFiles(data, data.exportFormat === 'image-high' ? highQualityImageScale : 1)
       const result = await shareInvoiceFiles(files, data)
       if (result === 'shared') showToast('تم تسليم الفاتورة إلى التطبيق المختار.')
       else if (result === 'downloaded') showToast('مشاركة الملفات غير مدعومة. تم تنزيل الفاتورة حسب النوع المحدد.')
@@ -4287,7 +4387,7 @@ function openInvoiceCustomerExportDialog(
         previewStatus.textContent = `جارٍ تصدير الفاتورة بصيغة ${getFormatLabel()}...`
         const successful = data.exportFormat === 'excel'
           ? await exportInvoiceToExcel(confirmButton, data)
-          : await exportInvoiceImage(confirmButton, data, data.exportFormat === 'image-high' ? 2 : 1)
+          : await exportInvoiceImage(confirmButton, data, data.exportFormat === 'image-high' ? highQualityImageScale : 1)
         if (!successful) {
           previewStatus.textContent = 'تعذر تصدير الفاتورة. يمكنك المحاولة مجددًا.'
           return
@@ -4344,7 +4444,7 @@ function openInvoiceCustomerExportDialog(
         previewStatus.textContent = `جارٍ تصدير الفاتورة بصيغة ${getFormatLabel()}...`
         const successful = data.exportFormat === 'excel'
           ? await exportInvoiceToExcel(confirmButton, data)
-          : await exportInvoiceImage(confirmButton, data, data.exportFormat === 'image-high' ? 2 : 1)
+          : await exportInvoiceImage(confirmButton, data, data.exportFormat === 'image-high' ? highQualityImageScale : 1)
         if (!successful) {
           previewStatus.textContent = 'تعذر تصدير الفاتورة. يمكنك المحاولة مجددًا.'
           return
@@ -5156,7 +5256,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
   element.querySelector('#export-png')!.addEventListener('click', () =>
     openImageExportPreview(1, getRows()))
   element.querySelector('#export-png-high')!.addEventListener('click', () =>
-    openImageExportPreview(2, getRows()))
+    openImageExportPreview(highQualityImageScale, getRows()))
 }
 
 async function loadSettings(user: User, ownerId: string, sessionId: number) {
