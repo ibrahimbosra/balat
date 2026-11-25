@@ -2289,7 +2289,7 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   .list-head h1 span { min-width: 28px; height: 28px; margin-inline-start: 5px; font-size: 11px; }
   .modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 20px 14px 16px; }
   .modal.invoice-correction-modal { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); padding: 20px 14px 16px; }
-  .modal.invoice-correction-modal > h2 { margin: 0 44px 12px; }
+  .modal.invoice-correction-modal > h2 { margin: 0 44px 12px; font-size: 16px; white-space: nowrap; }
   .modal-backdrop:has(.invoice-history-modal) { padding: 8px; }
   .modal-backdrop:has(.invoice-history-modal) > .invoice-history-modal {
     width: 100%;
