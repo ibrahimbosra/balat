@@ -689,8 +689,16 @@ function renderCustomersSection() {
     <section class="service-list customers-list">
       ${visible.map((customer, index) => {
         const summary = invoiceSummaries.get(customer.id) || { total: 0, paid: 0, remaining: 0 }
+        const paymentStatus = summary.total <= 0.00001
+          ? null
+          : summary.remaining <= 0.00001
+            ? { key: 'paid', label: 'مسدد بالكامل' }
+            : summary.paid > 0.00001
+              ? { key: 'partial', label: 'مسدد جزئيًا' }
+              : { key: 'unpaid', label: 'غير مسدد' }
         return `
           <article class="service-row customer-row">
+            ${paymentStatus ? `<span class="invoice-status-badge is-${paymentStatus.key}" aria-label="حالة الفواتير: ${paymentStatus.label}">${paymentStatus.label}</span>` : ''}
             <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
             <button class="service-main customer-main" type="button" data-edit-customer="${customer.id}">
               <span class="customer-identity-line">
