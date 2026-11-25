@@ -284,6 +284,86 @@ function parseCustomer(id: string, data: Record<string, unknown>): Customer | nu
   }
 }
 
+type CustomerIdentityMatch =
+  | { kind: 'exact'; customer: Customer }
+  | { kind: 'phone-conflict'; customer: Customer }
+  | { kind: 'address-needed'; customer: Customer }
+  | { kind: 'multiple-matches' }
+
+class CustomerIdentityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'CustomerIdentityError'
+  }
+}
+
+function normalizeCustomerText(value: string) {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('ar')
+}
+
+function normalizeCustomerPhone(value: string) {
+  return value
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x6f0))
+    .replace(/\D/g, '')
+}
+
+function findCustomerIdentityMatch(
+  name: string,
+  phone: string,
+  address: string,
+  excludeCustomerId?: string,
+): CustomerIdentityMatch | null {
+  const nameKey = normalizeCustomerText(name)
+  const phoneKey = normalizeCustomerPhone(phone)
+  const addressKey = normalizeCustomerText(address)
+  const candidates = customers.filter((customer) => customer.id !== excludeCustomerId)
+
+  if (phoneKey) {
+    const phoneMatches = candidates.filter((customer) => normalizeCustomerPhone(customer.phone) === phoneKey)
+    if (phoneMatches.length) {
+      const exactMatch = phoneMatches.find((customer) =>
+        !nameKey || normalizeCustomerText(customer.name) === nameKey)
+      return exactMatch
+        ? { kind: 'exact', customer: exactMatch }
+        : { kind: 'phone-conflict', customer: phoneMatches[0] }
+    }
+    return null
+  }
+
+  if (!nameKey) return null
+  const sameName = candidates.filter((customer) => normalizeCustomerText(customer.name) === nameKey)
+  if (addressKey) {
+    const exactMatches = sameName.filter((customer) => normalizeCustomerText(customer.address) === addressKey)
+    if (exactMatches.length === 1) return { kind: 'exact', customer: exactMatches[0] }
+    if (exactMatches.length > 1) return { kind: 'multiple-matches' }
+    return null
+  }
+  if (sameName.length === 1) return { kind: 'address-needed', customer: sameName[0] }
+  if (sameName.length > 1) return { kind: 'multiple-matches' }
+  return null
+}
+
+function customerIdentityMessage(match: CustomerIdentityMatch, context: 'invoice' | 'customer') {
+  if (match.kind === 'exact') {
+    return context === 'invoice'
+      ? 'الزبون مسجل بالفعل، وسيتم ربط الفاتورة باسمه.'
+      : 'هذا الزبون مسجل بالفعل ولا يمكن إضافته مرة أخرى.'
+  }
+  if (match.kind === 'phone-conflict') {
+    return `رقم الهاتف مرتبط بزبون اسمه ${match.customer.name}. اختره من القائمة أو تحقق من صحة البيانات.`
+  }
+  if (match.kind === 'address-needed') {
+    return `يوجد زبون مسجل باسم ${match.customer.name}. أدخل العنوان لتمييزه أو اختره من القائمة.`
+  }
+  return 'توجد عدة سجلات محتملة لهذا الاسم. اختر الزبون من القائمة أو أضف رقم الهاتف لتحديده.'
+}
+
 function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceRecord | null {
   const invoiceNumber = typeof data.invoiceNumber === 'string' ? data.invoiceNumber.trim() : ''
   if (!invoiceNumber) return null
@@ -417,6 +497,7 @@ function showToast(message: string) {
 }
 
 function friendlyError(error: unknown) {
+  if (error instanceof CustomerIdentityError) return error.message
   const code = typeof error === 'object' && error && 'code' in error ? String((error as { code: string }).code) : ''
   if (code.includes('permission-denied')) return 'ليس لديك صلاحية تنفيذ هذا الإجراء.'
   if (code.includes('network') || code.includes('unavailable')) return 'تعذر الاتصال. تحقق من الإنترنت وحاول مجددًا.'
@@ -814,6 +895,11 @@ function renderCustomerEditor(existing?: Customer) {
     const address = String(data.get('address') || '').trim()
     const notes = String(data.get('notes') || '').trim()
     if (!name) { error.textContent = 'أدخل اسم الزبون.'; return }
+    const identityMatch = findCustomerIdentityMatch(name, phone, address, existing?.id)
+    if (identityMatch) {
+      error.textContent = customerIdentityMessage(identityMatch, 'customer')
+      return
+    }
     const now = new Date().toISOString()
     const documentData = {
       name,
@@ -3181,11 +3267,20 @@ async function saveExportedInvoiceRecord(
   const invoicesCollection = collection(db, 'users', ownerId, 'invoices')
   const sourceRecord = context?.sourceRecord
   const enteredCustomerName = data.customerName.trim().replace(/\s+/g, ' ')
-  const customerNameKey = (name: string) => name.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('ar')
-  const matchingCustomer = (data.customerId
+  const currentLinkedCustomer = data.customerId
     ? customers.find((customer) => customer.id === data.customerId)
-    : undefined)
-    || customers.find((customer) => customerNameKey(customer.name) === customerNameKey(enteredCustomerName))
+    : undefined
+  const identityMatch = findCustomerIdentityMatch(
+    enteredCustomerName,
+    data.customerPhone,
+    data.customerAddress,
+    currentLinkedCustomer?.id,
+  )
+  if (identityMatch && identityMatch.kind !== 'exact') {
+    throw new CustomerIdentityError(customerIdentityMessage(identityMatch, 'invoice'))
+  }
+  const matchingCustomer = currentLinkedCustomer
+    || (identityMatch?.kind === 'exact' ? identityMatch.customer : undefined)
   const newCustomerRef = enteredCustomerName && !matchingCustomer
     ? doc(collection(db, 'users', ownerId, 'customers'))
     : null
@@ -3739,9 +3834,49 @@ function openInvoiceCustomerExportDialog(
   })
   let exportedSuccessfully = false
   let savedSuccessfully = false
+  let linkedExistingCustomer = false
+  const resolveInvoiceCustomer = () => {
+    const linkedCustomer = selectedCustomerId
+      ? customers.find((customer) => customer.id === selectedCustomerId)
+      : undefined
+    const identityMatch = findCustomerIdentityMatch(
+      data.customerName,
+      data.customerPhone,
+      data.customerAddress,
+      linkedCustomer?.id,
+    )
+    if (identityMatch && identityMatch.kind !== 'exact') {
+      const message = customerIdentityMessage(identityMatch, 'invoice')
+      previewStatus.textContent = message
+      showToast(message)
+      return false
+    }
+    if (identityMatch?.kind === 'exact') {
+      const customer = identityMatch.customer
+      selectedCustomerId = customer.id
+      selectedCustomerName = customer.name
+      data.customerId = customer.id
+      data.customerName = customer.name
+      data.customerPhone = customer.phone
+      data.customerAddress = customer.address
+      if (nameInput) nameInput.value = customer.name
+      if (phoneInput) {
+        phoneInput.value = customer.phone
+        phoneInput.disabled = true
+      }
+      if (addressInput) {
+        addressInput.value = customer.address
+        addressInput.disabled = true
+      }
+      linkedExistingCustomer = true
+      showToast(customerIdentityMessage(identityMatch, 'invoice'))
+    }
+    return true
+  }
   confirmButton.addEventListener('click', async () => {
     if (confirmingExport) return
     if (!syncExportData(true)) return
+    if (allowDataEdit && !resolveInvoiceCustomer()) return
     confirmingExport = true
     previewVersion += 1
     if (previewUpdateTimer !== undefined) {
@@ -3774,7 +3909,9 @@ function openInvoiceCustomerExportDialog(
         previewStatus.textContent = 'جارٍ حفظ تصحيح الفاتورة في السجل...'
         await saveExportedInvoiceRecord(ownerId, data, context?.editableItems || [], { sourceRecord: context?.sourceRecord, payments: context?.payments })
         closeDialog()
-        showToast('تم حفظ تصحيح الفاتورة في السجل.')
+        showToast(linkedExistingCustomer
+          ? 'تم حفظ التصحيح وربط الفاتورة بالزبون المسجل.'
+          : 'تم حفظ تصحيح الفاتورة في السجل.')
         return
       }
 
@@ -3791,7 +3928,9 @@ function openInvoiceCustomerExportDialog(
         await saveExportedInvoiceRecord(ownerId, data, context?.editableItems || [], { sourceRecord: context?.sourceRecord, payments: context?.payments })
         savedSuccessfully = true
         closeDialog()
-        showToast('تم حفظ الفاتورة في السجل بنجاح.')
+        showToast(linkedExistingCustomer
+          ? 'تم حفظ الفاتورة وربطها بالزبون المسجل.'
+          : 'تم حفظ الفاتورة في السجل بنجاح.')
         return
       }
 
@@ -3823,10 +3962,15 @@ function openInvoiceCustomerExportDialog(
       previewStatus.textContent = 'جارٍ حفظ الفاتورة في السجل...'
       await saveExportedInvoiceRecord(ownerId, data, context?.editableItems || [], { sourceRecord: context?.sourceRecord, payments: context?.payments })
       closeDialog()
-      showToast('تم تصدير الفاتورة وحفظها في السجل بنجاح.')
+      showToast(linkedExistingCustomer
+        ? 'تم تصدير الفاتورة وحفظها وربطها بالزبون المسجل.'
+        : 'تم تصدير الفاتورة وحفظها في السجل بنجاح.')
     } catch (error) {
       console.error('Failed to confirm invoice export/save:', error)
-      if (isExportSave && committedInvoiceNumber) {
+      if (error instanceof CustomerIdentityError) {
+        previewStatus.textContent = error.message
+        showToast(error.message)
+      } else if (isExportSave && committedInvoiceNumber) {
         previewStatus.textContent = 'تعذر حفظ الفاتورة في السجل. يمكنك الضغط على "حفظ الفاتورة" لإعادة المحاولة بنفس الرقم.'
         showToast('تعذر حفظ الفاتورة في السجل.')
       } else if (exportedSuccessfully) {
