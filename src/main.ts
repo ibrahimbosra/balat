@@ -681,7 +681,7 @@ function renderInvoicesSection() {
       const card = button.closest<HTMLElement>('.invoice-summary-card')
       const extra = card?.querySelector<HTMLElement>('.invoice-summary-extra')
       if (!card || !extra) return
-      const open = extra.hidden
+      const open = Boolean(extra.hidden)
       extra.hidden = !open
       card.classList.toggle('is-meta-open', open)
       button.setAttribute('aria-expanded', open ? 'true' : 'false')
