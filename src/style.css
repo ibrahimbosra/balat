@@ -340,7 +340,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .customer-identity-line .service-name {
   align-self: baseline;
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.25;
 }
 .customer-identity-separator {
