@@ -2291,6 +2291,10 @@ body.dark-mode .modal-actions .cancel-delete-confirm {
 body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
 
 @media (max-width: 599px) {
+  .invoice-history-modal.invoice-corrections-modal {
+    height: calc(100dvh - 16px);
+    min-height: calc(100dvh - 16px);
+  }
   .topbar { grid-template-columns: minmax(0,1fr) 42px 42px; }
   .list-head h1 { font-size: 15px; white-space: nowrap; }
   .list-head h1 span { min-width: 28px; height: 28px; margin-inline-start: 5px; font-size: 11px; }
@@ -2464,6 +2468,11 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   overflow: hidden;
 }
 
+.invoice-history-modal.invoice-corrections-modal {
+  height: min(720px, calc(100dvh - 32px));
+  min-height: 560px;
+}
+
 .invoice-history-shell {
   display: flex;
   flex-direction: column;
@@ -2478,7 +2487,7 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 2px 0 12px;
+  padding: 14px 0 12px;
 }
 
 .invoice-history-footer {
@@ -2497,32 +2506,113 @@ body.dark-mode .invoice-history-footer {
 }
 
 .invoice-version-card {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px;
   background: var(--surface-soft, rgba(255,255,255,0.03));
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
-.invoice-version-card.is-original {
-  border-color: #c69a2d;
-  background: linear-gradient(180deg, #fff8e7 0%, #fffdf6 100%);
-  box-shadow: 0 0 0 1px rgba(198, 154, 45, 0.18) inset;
+body.dark-mode .invoice-version-detail,
+body.dark-mode .invoice-financial-item {
+  border-color: rgba(212, 178, 76, 0.22);
+  background: rgba(24, 35, 45, 0.72);
 }
 
-body.dark-mode .invoice-version-card.is-original {
-  border-color: #d4b24c;
-  background: linear-gradient(180deg, rgba(120, 92, 20, 0.35) 0%, rgba(60, 48, 18, 0.45) 100%);
-  box-shadow: 0 0 0 1px rgba(212, 178, 76, 0.2) inset;
+body.dark-mode .invoice-financial-item.is-remaining {
+  border-color: #991b1b;
+  background: rgba(127, 29, 29, 0.38);
 }
 
 .invoice-version-head {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  min-height: 28px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(198, 154, 45, 0.18);
+}
+
+.invoice-version-head .invoice-summary-workshop {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  white-space: nowrap;
+  height: 23px;
+  min-height: 23px;
+  padding: 3px 10px;
+  border: 1px solid #9ecdc8;
+  border-radius: 999px;
+  background: #eef9f7;
+  color: #007d79;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+body.dark-mode .invoice-version-head .invoice-summary-workshop {
+  border-color: #3d7773;
+  background: #193b3a;
+  color: #a8eee6;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+
+.invoice-version-card > .invoice-corrections-log-button {
+  position: absolute;
+  top: -11px;
+  right: 12px;
+  left: auto;
+  width: auto;
+  z-index: 2;
+}
+
+.invoice-version-card > .invoice-status-badge {
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  z-index: 2;
+  display: inline-block;
+}
+
+.invoice-version-financials {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
+}
+
+.invoice-financial-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(198, 154, 45, 0.13);
+}
+
+.invoice-financial-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.invoice-financial-item strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.invoice-financial-item small {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.invoice-financial-item.is-remaining {
+  border-color: #fca5a5;
+  background: #fff1f2;
 }
 
 .invoice-version-card p {
@@ -2535,12 +2625,33 @@ body.dark-mode .invoice-version-card.is-original {
   background: transparent;
   padding: 0;
   color: var(--teal);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   overflow-wrap: anywhere;
 }
 body.dark-mode .invoice-version-workshop {
   color: #a8eee6;
+}
+
+.invoice-version-customer,
+.invoice-version-teacher {
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.invoice-version-customer {
+  margin-top: 10px !important;
+}
+
+.invoice-version-customer span {
+  color: var(--muted);
+  white-space: normal;
+}
+
+.invoice-version-teacher {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .invoice-payments-list {
@@ -2599,6 +2710,31 @@ body.dark-mode .invoice-version-workshop {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
+.invoice-status-badge.invoice-corrections-log-button {
+  appearance: none;
+  width: max-content !important;
+  max-width: max-content;
+  left: auto !important;
+  right: 12px !important;
+  height: auto;
+  min-height: 0;
+  border: 1px solid #9ecdc8;
+  color: #007d79;
+  background: #eef9f7;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  text-align: center;
+}
+
+body.dark-mode .invoice-status-badge.invoice-corrections-log-button {
+  border-color: #3d7773;
+  color: #a8eee6;
+  background: #193b3a;
+}
+
 .invoice-status-badge.is-paid {
   color: #166534;
   background: #dcfce7;
@@ -2651,7 +2787,6 @@ body.dark-mode .invoice-status-badge.is-unpaid {
 .invoice-payment-record-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .invoice-payment-record-actions .secondary-button,
 .invoice-payment-record-actions .danger-button { min-height: 36px; padding: 6px 12px; }
-.invoice-base-card .invoice-corrections-log-button { min-height: 34px; padding: 4px 10px; font-size: 12px; }
 .invoice-service-item.is-cancelled { opacity: 0.72; border-color: var(--border-soft); }
 .invoice-service-item.is-cancelled .service-item-header strong,
 .invoice-service-item.is-cancelled .service-item-header span { text-decoration: line-through; }
@@ -2679,6 +2814,23 @@ body.dark-mode .invoice-status-badge.is-unpaid {
 .correction-empty-state { text-align: center; display: grid; gap: 6px; padding: 18px 12px; }
 .correction-empty-state strong { font-size: 15px; }
 .correction-empty-state p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+
+@media (max-width: 640px) {
+  .invoice-version-financials {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .invoice-version-card {
+    border-radius: 11px;
+    padding: 8px;
+  }
+  .invoice-financial-item {
+    padding: 7px 8px;
+  }
+  .invoice-financial-item strong {
+    font-size: 14px;
+  }
+}
 @media (max-width: 640px) {
   .correction-entry-head { flex-direction: column; align-items: stretch; }
   .correction-change-diff { gap: 6px; }

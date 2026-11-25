@@ -1303,7 +1303,7 @@ function renderInvoiceCorrectionLogDialog(rootId: string) {
         </div>`}
     </section>`)
   const modalSection = element.querySelector<HTMLElement>('.modal')!
-  modalSection.classList.add('invoice-history-modal')
+  modalSection.classList.add('invoice-history-modal', 'invoice-corrections-modal')
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
 }
 
@@ -1323,21 +1323,39 @@ function renderInvoiceVersionsDialog(rootId: string) {
   const net = getInvoiceNetTotal(latest)
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
-    <p class="eyebrow">الفاتورة</p>
     <h2>الفاتورة رقم ${escapeHtml(root.rootInvoiceNumber || root.invoiceNumber)}</h2>
     <div class="invoice-history-shell invoice-base-shell">
       <section class="invoice-versions-list">
-        <article class="invoice-version-card is-original invoice-base-card">
+        <article class="invoice-version-card invoice-base-card">
+          <span class="invoice-status-badge is-${status.key}">${escapeHtml(status.label)}</span>
           <div class="invoice-version-head">
-            <strong>الفاتورة رقم ${escapeHtml(latest.invoiceNumber)}</strong>
-            <button class="secondary-button invoice-corrections-log-button" type="button" id="invoice-corrections-log" title="سجل التعديلات والحركات">سجل الحركات</button>
+            ${latest.workshopName?.trim() ? `<span class="invoice-summary-workshop">ورشة ${escapeHtml(latest.workshopName.trim())}</span>` : ''}
           </div>
-          ${latest.workshopName?.trim() ? `<p class="invoice-version-workshop">ورشة ${escapeHtml(latest.workshopName.trim())}</p>` : ''}
-          <p>${escapeHtml(latest.customerName || 'بدون اسم زبون')}${latest.customerPhone ? ` — ${escapeHtml(latest.customerPhone)}` : ''}${latest.customerAddress ? ` — ${escapeHtml(latest.customerAddress)}` : ''}</p>
-          ${latest.responsibleTeacherName ? `<p>المعلم المسؤول: ${escapeHtml(latest.responsibleTeacherName)}</p>` : ''}
-          <p>الإجمالي: ${money(latest.total)} دولار${latest.discount ? ` | الخصم: ${money(latest.discount.amount)} دولار` : ''} | الصافي: ${money(net)} دولار</p>
-          <p>المدفوع: ${money(paymentsTotal)} دولار | المتبقي: ${money(remaining)} دولار</p>
-          <p><span class="invoice-status-badge is-${status.key}" style="position:static;display:inline-block;">${escapeHtml(status.label)}</span></p>
+          <button class="invoice-status-badge is-neutral invoice-corrections-log-button" type="button" id="invoice-corrections-log" title="سجل التعديلات والحركات">سجل الحركات</button>
+          <p class="invoice-version-customer">${escapeHtml(latest.customerName || 'بدون اسم زبون')}${latest.customerPhone ? ` <span>• ${escapeHtml(latest.customerPhone)}</span>` : ''}${latest.customerAddress ? ` <span>• ${escapeHtml(latest.customerAddress)}</span>` : ''}</p>
+          ${latest.responsibleTeacherName ? `<p class="invoice-version-teacher">المعلم المسؤول: ${escapeHtml(latest.responsibleTeacherName)}</p>` : ''}
+          <div class="invoice-version-financials">
+            <div class="invoice-financial-item">
+              <span>الإجمالي</span>
+              <strong>${money(latest.total)} <small>دولار</small></strong>
+            </div>
+            ${latest.discount ? `<div class="invoice-financial-item">
+              <span>الخصم</span>
+              <strong>${money(latest.discount.amount)} <small>دولار</small></strong>
+            </div>` : ''}
+            <div class="invoice-financial-item">
+              <span>الصافي</span>
+              <strong>${money(net)} <small>دولار</small></strong>
+            </div>
+            <div class="invoice-financial-item">
+              <span>المدفوع</span>
+              <strong>${money(paymentsTotal)} <small>دولار</small></strong>
+            </div>
+            <div class="invoice-financial-item is-remaining">
+              <span>المتبقي</span>
+              <strong>${money(remaining)} <small>دولار</small></strong>
+            </div>
+          </div>
         </article>
 
         <div class="invoice-ledger-section">
@@ -1360,7 +1378,7 @@ function renderInvoiceVersionsDialog(rootId: string) {
       </section>
       <div class="invoice-history-footer">
         <button class="secondary-button" type="button" id="invoice-history-export">تصدير الفاتورة</button>
-        <button class="primary-button" type="button" id="invoice-history-correct">تعديل الفاتورة الأساسية</button>
+        <button class="primary-button" type="button" id="invoice-history-correct">تعديل الفاتورة</button>
       </div>
     </div>`)
   const modalSection = element.querySelector<HTMLElement>('.modal')!
