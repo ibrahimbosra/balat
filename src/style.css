@@ -195,7 +195,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   min-height: 150px;
   grid-template-columns: minmax(0,1fr);
   align-content: start;
-  margin-inline-end: 12px;
+  margin-inline: 12px;
   padding: 18px 22px 18px 14px;
 }
 .service-order {
@@ -2205,7 +2205,7 @@ body.dark-mode .invoice-status-badge.is-unpaid {
   position: relative;
   display: block;
   min-height: 0;
-  margin-inline-end: 0;
+  margin-inline: 0;
   margin-bottom: 8px;
   padding: 0 0 28px;
   overflow: visible;
