@@ -2582,6 +2582,8 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
 
         const paidTotal = exportPayments.reduce((sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0), 0)
         const remainingAmount = Number(Math.max(0, finalTotal - paidTotal).toFixed(2))
+        const isFullyPaid = remainingAmount <= 0.00001
+        const lastPayment = exportPayments[exportPayments.length - 1]
         const paymentsAreaY = paymentsTitleY + paymentsTitleHeight + 4
         const totalWidth = tableRight - tableLeft
         if (exportPayments.length === 1) {
@@ -2595,30 +2597,38 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
               value: `${money(payment.amount)} دولار`,
               sublabel: payment.date ? `تاريخ الدفعة: ${payment.date}` : '',
               fill: '#f3f9f8',
+              settled: false,
             },
             {
               left: tableLeft,
-              label: 'المتبقي من المبلغ',
-              value: `${money(remainingAmount)} دولار`,
-              sublabel: '',
-              fill: '#e8f5f2',
+              label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
+              value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
+              sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
+              fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
+              labelColor: isFullyPaid ? '#166534' : '#c2410c',
+              valueColor: isFullyPaid ? '#166534' : '#c2410c',
+              stroke: isFullyPaid ? '#86efac' : '#fdba74',
+              settled: isFullyPaid,
             },
           ]
           paymentCells.forEach((cell) => {
             context.fillStyle = cell.fill
             context.fillRect(cell.left, paymentsAreaY, paymentCellWidth, paymentCellHeight)
-            context.strokeStyle = '#c6a253'
+            context.strokeStyle = cell.stroke || '#c6a253'
             context.strokeRect(cell.left, paymentsAreaY, paymentCellWidth, paymentCellHeight)
             context.textAlign = 'center'
-            context.fillStyle = '#006e69'
+            context.fillStyle = cell.labelColor || '#006e69'
             context.font = '700 10px "Cairo", sans-serif'
             context.fillText(cell.label, cell.left + paymentCellWidth / 2, paymentsAreaY + 12, paymentCellWidth - 10)
-            context.font = '800 14px "Cairo", sans-serif'
-            context.fillText(cell.value, cell.left + paymentCellWidth / 2, paymentsAreaY + 28, paymentCellWidth - 10)
+            if (cell.value) {
+              context.fillStyle = cell.valueColor || '#006e69'
+              context.font = '800 14px "Cairo", sans-serif'
+              context.fillText(cell.value, cell.left + paymentCellWidth / 2, paymentsAreaY + 28, paymentCellWidth - 10)
+            }
             if (cell.sublabel) {
-              context.fillStyle = '#667782'
-              context.font = '600 8px "Cairo", sans-serif'
-              context.fillText(cell.sublabel, cell.left + paymentCellWidth / 2, paymentsAreaY + 40, paymentCellWidth - 10)
+              context.fillStyle = cell.settled ? '#166534' : '#667782'
+              context.font = cell.settled ? '700 10px "Cairo", sans-serif' : '600 8px "Cairo", sans-serif'
+              context.fillText(cell.sublabel, cell.left + paymentCellWidth / 2, paymentsAreaY + (cell.settled ? 32 : 40), paymentCellWidth - 10)
             }
           })
         } else {
@@ -2630,14 +2640,16 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
               fill: '#f3f9f8',
               valueColor: '#203044',
               labelColor: '#006e69',
+              settled: false,
             })),
             {
-              label: 'المتبقي من المبلغ',
-              value: `${money(remainingAmount)} دولار`,
-              sublabel: '',
-              fill: '#e8f5f2',
-              valueColor: '#203044',
-              labelColor: '#006e69',
+              label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
+              value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
+              sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
+              fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
+              valueColor: isFullyPaid ? '#166534' : '#c2410c',
+              labelColor: isFullyPaid ? '#166534' : '#c2410c',
+              settled: isFullyPaid,
             },
           ]
           const cardGap = 8
@@ -2659,9 +2671,9 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
             context.font = '800 14px "Cairo", sans-serif'
             context.fillText(card.value, left + paymentCardWidth / 2, paymentsAreaY + 28, paymentCardWidth - 10)
             if (card.sublabel) {
-              context.fillStyle = '#667782'
-              context.font = '600 8px "Cairo", sans-serif'
-              context.fillText(card.sublabel, left + paymentCardWidth / 2, paymentsAreaY + 40, paymentCardWidth - 10)
+              context.fillStyle = card.settled ? '#166534' : '#667782'
+              context.font = card.settled ? '700 10px "Cairo", sans-serif' : '600 8px "Cairo", sans-serif'
+              context.fillText(card.sublabel, left + paymentCardWidth / 2, paymentsAreaY + (card.settled ? 32 : 40), paymentCardWidth - 10)
             }
             cardRight = left - cardGap
           })
@@ -3047,6 +3059,8 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       summaryRowNumber += 1
       const paidTotal = exportPayments.reduce((sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0), 0)
       const remainingAmount = Number(Math.max(0, finalTotal - paidTotal).toFixed(2))
+      const isFullyPaid = remainingAmount <= 0.00001
+      const lastPayment = exportPayments[exportPayments.length - 1]
       const paymentRowNumber = summaryRowNumber
       const paymentRow = worksheet.getRow(paymentRowNumber)
       paymentRow.height = 56
@@ -3056,12 +3070,20 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           value: `${money(payment.amount)} دولار`,
           sublabel: [payment.date ? `التاريخ: ${payment.date}` : '', payment.note || ''].filter(Boolean).join(' — '),
           fill: 'FFF3F9F8',
+          labelColor: 'FF006E69',
+          valueColor: 'FF203044',
+          sublabelColor: 'FF667782',
+          settled: false,
         })),
         {
-          label: 'المتبقي من المبلغ',
-          value: `${money(remainingAmount)} دولار`,
-          sublabel: '',
-          fill: 'FFE8F5F2',
+          label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
+          value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
+          sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
+          fill: isFullyPaid ? 'FFECFDF3' : 'FFFFF4E5',
+          labelColor: isFullyPaid ? 'FF166534' : 'FFC2410C',
+          valueColor: isFullyPaid ? 'FF166534' : 'FFC2410C',
+          sublabelColor: isFullyPaid ? 'FF166534' : 'FFC2410C',
+          settled: isFullyPaid,
         },
       ]
       const formatPaymentCard = (
@@ -3094,11 +3116,13 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
         const endColumn = Math.max(startColumn, Math.floor(((i + 1) * invoiceColumnCount) / cardCount))
         const card = paymentCards[cardCount - 1 - i]
         const richText: import('exceljs').RichText[] = [
-          { text: `${card.label}\n`, font: { name: 'Arial', size: 10, bold: true, color: { argb: 'FF006E69' } } },
-          { text: `${card.value}${card.sublabel ? '\n' : ''}`, font: { name: 'Arial', size: 14, bold: true, color: { argb: 'FF203044' } } },
+          { text: `${card.label}\n`, font: { name: 'Arial', size: 10, bold: true, color: { argb: card.labelColor } } },
         ]
+        if (card.value) {
+          richText.push({ text: `${card.value}${card.sublabel ? '\n' : ''}`, font: { name: 'Arial', size: 14, bold: true, color: { argb: card.valueColor } } })
+        }
         if (card.sublabel) {
-          richText.push({ text: card.sublabel, font: { name: 'Arial', size: 9, color: { argb: 'FF667782' } } })
+          richText.push({ text: card.sublabel, font: { name: 'Arial', size: card.settled ? 11 : 9, bold: card.settled, color: { argb: card.sublabelColor } } })
         }
         formatPaymentCard(startColumn, endColumn, richText, card.fill)
       }
