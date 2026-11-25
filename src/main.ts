@@ -3971,7 +3971,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
   }
   const updateInvoiceTotals = () => {
     const totals = new Map<string, number>()
-    invoiceItems.forEach(({ id, quantity, price, currencyCode, cancelled }) => {
+    invoiceItems.forEach(({ id, name, unit, quantity, price, currencyCode, cancelled }) => {
       const card = invoicePanel.querySelector<HTMLElement>(`[data-invoice-item="${id}"]`)
       const totalElement = card?.querySelector<HTMLElement>('[data-invoice-total]')
       const calculationElement = card?.querySelector<HTMLElement>('[data-invoice-calculation]')
@@ -3979,9 +3979,20 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       const numericQuantity = trimmedQuantity ? Number(trimmedQuantity) : null
       const trimmedPrice = price.trim()
       const numericPrice = trimmedPrice ? Number(trimmedPrice) : null
+      const lineTotal = numericQuantity !== null && numericPrice !== null
+        ? numericQuantity * numericPrice
+        : Number.NaN
+      const isComplete = Boolean(name.trim() && unit.trim())
+        && numericQuantity !== null
+        && Number.isFinite(numericQuantity)
+        && numericQuantity >= 0
+        && numericPrice !== null
+        && Number.isFinite(numericPrice)
+        && numericPrice >= 0
+        && Number.isFinite(lineTotal)
+      card?.classList.toggle('is-incomplete', !cancelled && !isComplete)
       if (cancelled) {
         if (Number.isFinite(numericQuantity) && Number.isFinite(numericPrice) && numericQuantity! >= 0 && numericPrice! >= 0) {
-          const lineTotal = numericQuantity! * numericPrice!
           if (totalElement) totalElement.textContent = `ملغاة (${money(lineTotal)} ${invoiceCurrencyName(currencyCode)})`
           if (calculationElement) calculationElement.textContent = 'خدمة مُلغاة — غير محتسبة في الإجمالي'
         } else {
@@ -4014,7 +4025,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         if (calculationElement) calculationElement.textContent = 'أدخل سعرًا صحيحًا غير سالب'
         return
       }
-      const lineTotal = numericQuantity * numericPrice
       if (totalElement) totalElement.textContent = `${money(lineTotal)} ${invoiceCurrencyName(currencyCode)}`
       if (calculationElement) {
         calculationElement.textContent = `${money(numericQuantity)} × ${money(numericPrice)} = ${money(lineTotal)} ${invoiceCurrencyName(currencyCode)}`
@@ -4252,6 +4262,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       updateInvoiceTotals()
     } else if (input.matches('[data-invoice-name]')) {
       item.name = input.value
+      updateInvoiceTotals()
     } else if (input.matches('[data-invoice-notes]')) {
       item.notes = input.value
     } else if (input.matches('[data-invoice-unit]')) {
@@ -4359,8 +4370,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         cancelled: false,
       })
       renderInvoice()
-      window.requestAnimationFrame(() =>
-        invoicePanel.querySelector<HTMLInputElement>(`[data-invoice-name="${itemId}"]`)?.focus())
       return
     }
     const serviceOption = event.target.closest<HTMLButtonElement>('[data-invoice-choice]')
@@ -4386,8 +4395,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         cancelled: false,
       })
       renderInvoice()
-      window.requestAnimationFrame(() =>
-        invoicePanel.querySelector<HTMLInputElement>(`[data-invoice-quantity="${itemId}"]`)?.focus())
       return
     }
     const trigger = event.target.closest<HTMLButtonElement>('[data-invoice-picker-trigger]')
@@ -4398,10 +4405,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       menu.hidden = !menu.hidden
       picker.classList.toggle('is-open', !menu.hidden)
       trigger.setAttribute('aria-expanded', String(!menu.hidden))
-      if (!menu.hidden) {
-        const searchInput = menu.querySelector<HTMLInputElement>('[data-invoice-search]')
-        window.requestAnimationFrame(() => searchInput?.focus())
-      }
       return
     }
     const picker = event.target.closest<HTMLElement>('.invoice-service-picker')

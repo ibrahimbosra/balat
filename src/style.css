@@ -509,6 +509,10 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   background: #fff;
   padding: 12px;
 }
+.invoice-service-card.is-incomplete {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 1px rgba(220,38,38,.22);
+}
 .invoice-service-card:nth-child(odd) {
   background: #f3f9f8;
 }
