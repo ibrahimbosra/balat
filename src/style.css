@@ -1032,10 +1032,8 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   font-size: 19px;
 }
 .invoice-export-number {
-  margin: 0;
-  color: var(--teal);
-  font-size: 13px;
-  font-weight: 800;
+  color: inherit;
+  font: inherit;
 }
 .invoice-customer-fields {
   display: grid;
@@ -1062,11 +1060,6 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
-}
-.invoice-customer-export-dialog .invoice-export-number {
-  color: var(--teal);
-  font-size: 13px;
-  font-weight: 800;
 }
 .invoice-customer-fields input:not([type="radio"]):not([type="checkbox"]) {
   box-sizing: border-box;
@@ -1144,6 +1137,10 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   padding: 9px 6px;
 }
 .invoice-export-format { width: max-content; max-width: 100%; }
+.invoice-discount-options {
+  grid-column: 1 / -1;
+  width: 100%;
+}
 .invoice-export-format legend,
 .invoice-discount-options legend {
   padding: 0 4px;
@@ -1726,7 +1723,7 @@ body.dark-mode .invoice-customer-export-actions {
 }
 body.dark-mode .invoice-customer-export-dialog h3,
 body.dark-mode .invoice-customer-fields > label { color: #e6edf3; }
-body.dark-mode .invoice-export-number { color: #7de0d3; }
+body.dark-mode .invoice-export-number { color: inherit; }
 body.dark-mode .invoice-export-summary > div { background: #202d37; }
 body.dark-mode .invoice-export-summary strong { color: #e6edf3; }
 body.dark-mode .invoice-export-summary .invoice-export-total-card { background: #193b3a; }
@@ -1833,6 +1830,19 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
 @media (max-width: 599px) {
   .topbar { grid-template-columns: minmax(0,1fr) 42px 42px 42px; }
   .modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 20px 14px 16px; }
+  .modal-backdrop:has(.invoice-history-modal) { padding: 8px; }
+  .modal-backdrop:has(.invoice-history-modal) > .invoice-history-modal {
+    width: 100%;
+    max-width: none;
+    align-items: stretch;
+  }
+  .invoice-history-modal .invoice-history-shell,
+  .invoice-history-modal .invoice-versions-list,
+  .invoice-history-modal .invoice-base-card,
+  .invoice-history-modal .invoice-ledger-section {
+    width: 100%;
+    min-width: 0;
+  }
   .modal:has(.settings-tabs) {
     width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
@@ -1899,7 +1909,7 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     width: 100%;
     height: calc(100dvh - 20px);
     max-height: calc(100dvh - 20px);
-    padding: 20px 14px 14px;
+    padding: 50px 14px 14px;
   }
   .invoice-customer-export-actions {
     margin: auto -14px -14px;

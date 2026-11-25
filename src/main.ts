@@ -3254,7 +3254,7 @@ function openInvoiceCustomerExportDialog(
   if (fixedInvoiceNumber) data.invoiceNumber = fixedInvoiceNumber
   if (context?.payments) data.payments = context.payments.map((payment) => ({ ...payment }))
   if (typeof data.exportNote !== 'string') data.exportNote = ''
-  const dialogTitle = isSaveCorrection ? 'حفظ تصحيح الفاتورة' : isExportOnly ? 'تصدير الفاتورة' : 'تجهيز نافذة فاتورة'
+  const dialogTitle = isSaveCorrection ? 'تصحيح الفاتورة' : isExportOnly ? 'تصدير الفاتورة' : 'تجهيز نافذة فاتورة'
   const confirmLabel = isSaveCorrection ? 'حفظ التصحيح' : isExportOnly ? 'تصدير' : 'حفظ الفاتورة'
   const backdrop = document.createElement('div')
   backdrop.className = 'invoice-customer-export-backdrop'
@@ -3262,8 +3262,7 @@ function openInvoiceCustomerExportDialog(
     <section class="invoice-customer-export-dialog" role="dialog" aria-modal="true" aria-labelledby="invoice-customer-export-title">
       <button type="button" class="invoice-customer-export-close" aria-label="إغلاق">${svg('close')}</button>
       <div class="invoice-customer-export-header">
-        <h3 id="invoice-customer-export-title">${dialogTitle}</h3>
-        <p class="invoice-export-number">${fixedInvoiceNumber ? 'رقم الفاتورة' : 'رقم الفاتورة المتوقع'} <bdi dir="ltr">${escapeHtml(data.invoiceNumber)}</bdi></p>
+        <h3 id="invoice-customer-export-title">${dialogTitle} رقم <bdi class="invoice-export-number" dir="ltr">${escapeHtml(data.invoiceNumber)}</bdi></h3>
       </div>
       ${isExportOnly ? `
       <div class="invoice-export-readonly-note modal-note">
@@ -3627,7 +3626,7 @@ function openInvoiceCustomerExportDialog(
           committedInvoiceNumber = await getNextInvoiceNumber(ownerId)
           if (!backdrop.isConnected || dataUserId !== ownerId) return
           data.invoiceNumber = committedInvoiceNumber
-          numberLabel.innerHTML = `رقم الفاتورة <bdi dir="ltr">${escapeHtml(data.invoiceNumber)}</bdi>`
+          numberLabel.textContent = data.invoiceNumber
           if (!previewSection.hidden) await renderPreview()
         }
         previewStatus.textContent = 'جارٍ حفظ الفاتورة في السجل...'
@@ -3646,10 +3645,10 @@ function openInvoiceCustomerExportDialog(
         if (!backdrop.isConnected || dataUserId !== ownerId) return
         if (data.invoiceNumber !== committedInvoiceNumber) {
           data.invoiceNumber = committedInvoiceNumber
-          numberLabel.textContent = `رقم الفاتورة ${data.invoiceNumber}`
+          numberLabel.textContent = data.invoiceNumber
           if (!previewSection.hidden) await renderPreview()
         } else {
-          numberLabel.textContent = `رقم الفاتورة ${data.invoiceNumber}`
+          numberLabel.textContent = data.invoiceNumber
         }
         previewStatus.textContent = `جارٍ تصدير الفاتورة بصيغة ${getFormatLabel()}...`
         const successful = data.exportFormat === 'excel'
@@ -3722,13 +3721,16 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     showToast('لا توجد خدمات للتصدير.')
     return
   }
+  const correctionInvoiceNumber = options?.correction && options.sourceRecord
+    ? options.sourceRecord.rootInvoiceNumber || options.sourceRecord.invoiceNumber
+    : ''
   const selected = new Set<string>()
   const exportPrices = new Map(workServices.map((service) => [service.id, service.price]))
   const modified = new Set<string>()
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
-    <p class="eyebrow">تجهيز فاتورة</p>
-    <h2>تجهيز نافذة فاتورة</h2>
+    <p class="eyebrow">${options?.correction ? 'تعديل فاتورة' : 'تجهيز فاتورة'}</p>
+    <h2>${options?.correction ? `تصحيح الفاتورة رقم ${escapeHtml(correctionInvoiceNumber)}` : 'تجهيز نافذة فاتورة'}</h2>
     <div class="export-tabs">
       <button class="active" type="button" data-export-tab="invoice">حساب فاتورة</button>
       <button type="button" data-export-tab="services">الخدمات</button>
