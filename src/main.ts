@@ -857,7 +857,6 @@ function renderActiveSection() {
   const content = document.querySelector<HTMLElement>('#main-section-content')
   const search = document.querySelector<HTMLInputElement>('#main-search')
   const addButton = document.querySelector<HTMLButtonElement>('#main-add')
-  const exportButton = document.querySelector<HTMLButtonElement>('#open-export')
   if (!head || !content) return
   if (search) {
     search.placeholder = activeMainSection === 'services'
@@ -869,10 +868,11 @@ function renderActiveSection() {
   }
   if (addButton) {
     addButton.hidden = activeMainSection === 'invoices'
-    addButton.setAttribute('aria-label', activeMainSection === 'customers' ? 'إضافة زبون' : 'إضافة خدمة')
-    addButton.title = activeMainSection === 'customers' ? 'إضافة زبون' : 'إضافة خدمة'
+    const label = activeMainSection === 'customers' ? 'إضافة زبون' : 'إضافة خدمة'
+    addButton.setAttribute('aria-label', label)
+    addButton.title = label
+    addButton.innerHTML = `${svg('plus')}<span>${label}</span>`
   }
-  if (exportButton) exportButton.hidden = activeMainSection !== 'services'
   if (activeMainSection === 'services') {
     head.innerHTML = `الخدمات والأسعار <span id="service-count"></span>`
     content.innerHTML = '<section class="service-list" id="services-shell-list"></section>'
@@ -895,7 +895,6 @@ function renderProductsShell() {
     <main class="products-page">
       <header class="topbar">
         <div class="search-box">${svg('search')}<input id="main-search" type="search" placeholder="ابحث عن خدمة..." autocomplete="off"></div>
-        <button class="icon-button add-button" id="main-add" aria-label="إضافة">${svg('plus')}</button>
         <button class="icon-button" id="open-export" aria-label="تجهيز فاتورة" title="تجهيز فاتورة">${svg('invoice')}</button>
         <button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button>
       </header>
@@ -904,7 +903,10 @@ function renderProductsShell() {
         <button type="button" data-main-section="customers">الزبائن</button>
         <button type="button" data-main-section="invoices">سجل الفواتير</button>
       </nav>
-      <section class="list-head" id="main-section-head"><h1>الخدمات والأسعار <span id="service-count"></span></h1></section>
+      <section class="list-head" id="main-section-head">
+        <h1>الخدمات والأسعار <span id="service-count"></span></h1>
+        <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة">${svg('plus')}<span>إضافة خدمة</span></button>
+      </section>
       <section id="main-section-content"><section class="service-list" id="services-shell-list"></section></section>
     </main>`
   document.querySelector<HTMLInputElement>('#main-search')!.addEventListener('input', () => {
