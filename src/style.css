@@ -1844,8 +1844,6 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     min-width: 0;
   }
   .invoice-history-modal .invoice-versions-list {
-    position: relative;
-    left: -12px;
     width: calc(100% + 12px);
     padding-left: 12px;
   }
