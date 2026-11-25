@@ -22,6 +22,8 @@ import {
   runTransaction,
   setDoc,
   updateDoc,
+  writeBatch,
+  type DocumentReference,
 } from 'firebase/firestore'
 import {
   createBackupArchive,
@@ -134,6 +136,7 @@ type InvoiceRecord = {
   discount: StoredInvoiceDiscount
   exportFormat: InvoiceExportFormat
   exportDate: string
+  customerId: string | null
   customerName: string
   customerPhone: string
   customerAddress: string
@@ -365,6 +368,7 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
     discount,
     exportFormat: data.exportFormat === 'excel' || data.exportFormat === 'image' ? data.exportFormat : 'image-high',
     exportDate: typeof data.exportDate === 'string' ? data.exportDate : '',
+    customerId: typeof data.customerId === 'string' && data.customerId.trim() ? data.customerId.trim() : null,
     customerName: typeof data.customerName === 'string' ? data.customerName : '',
     customerPhone: typeof data.customerPhone === 'string' ? data.customerPhone : '',
     customerAddress: typeof data.customerAddress === 'string' ? data.customerAddress : '',
@@ -592,7 +596,8 @@ function renderInvoicesSection() {
         const customerName = latest.customerName?.trim() || 'بدون اسم زبون'
         const customerPhone = latest.customerPhone?.trim() || ''
         const customerAddress = latest.customerAddress?.trim() || ''
-        const matchedCustomer = customers.find((customer) =>
+        const matchedCustomer = customers.find((customer) => customer.id === latest.customerId)
+          || customers.find((customer) =>
           customer.name.trim() === customerName
           && (!customerPhone || customer.phone.trim() === customerPhone))
           || customers.find((customer) => customer.name.trim() === customerName)
@@ -1544,6 +1549,7 @@ type InvoiceExportData = {
   discount: InvoiceDiscount | null
   exportFormat: InvoiceExportFormat
   exportDate: string
+  customerId: string | null
   customerName: string
   customerPhone: string
   customerAddress: string
@@ -2974,6 +2980,7 @@ function invoiceRecordToExportData(record: InvoiceRecord): InvoiceExportData {
     discount: record.discount ? { ...record.discount } : null,
     exportFormat: record.exportFormat || 'image-high',
     exportDate: record.exportDate || formatInvoiceDateTime(new Date()),
+    customerId: record.customerId,
     customerName: record.customerName || '',
     customerPhone: record.customerPhone || '',
     customerAddress: record.customerAddress || '',
@@ -2992,6 +2999,7 @@ function invoiceTermsSignature(record: InvoiceRecord): string {
     items: record.items,
     total: record.total,
     discount: record.discount,
+    customerId: record.customerId,
     customerName: record.customerName,
     customerPhone: record.customerPhone,
     customerAddress: record.customerAddress,
@@ -3172,6 +3180,37 @@ async function saveExportedInvoiceRecord(
     : []
   const invoicesCollection = collection(db, 'users', ownerId, 'invoices')
   const sourceRecord = context?.sourceRecord
+  const enteredCustomerName = data.customerName.trim().replace(/\s+/g, ' ')
+  const customerNameKey = (name: string) => name.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('ar')
+  const matchingCustomer = (data.customerId
+    ? customers.find((customer) => customer.id === data.customerId)
+    : undefined)
+    || customers.find((customer) => customerNameKey(customer.name) === customerNameKey(enteredCustomerName))
+  const newCustomerRef = enteredCustomerName && !matchingCustomer
+    ? doc(collection(db, 'users', ownerId, 'customers'))
+    : null
+  const customerId = matchingCustomer?.id || newCustomerRef?.id || null
+  data.customerName = enteredCustomerName
+  data.customerId = customerId
+  const newCustomerRecord = newCustomerRef ? {
+    name: enteredCustomerName,
+    phone: data.customerPhone.trim(),
+    address: data.customerAddress.trim(),
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+  } : null
+  const persistInvoiceRecord = async (ref: DocumentReference, record: Omit<InvoiceRecord, 'id'>) => {
+    if (newCustomerRef && newCustomerRecord) {
+      const batch = writeBatch(db)
+      batch.set(ref, record)
+      batch.set(newCustomerRef, newCustomerRecord)
+      await batch.commit()
+      customers = [...customers, { id: newCustomerRef.id, ...newCustomerRecord }]
+      return
+    }
+    await setDoc(ref, record)
+  }
   if (sourceRecord) {
     const rootId = sourceRecord.rootId || sourceRecord.id
     const existing = getInvoiceRootVersions(rootId)
@@ -3193,6 +3232,7 @@ async function saveExportedInvoiceRecord(
       discount: data.discount ? { ...data.discount } : null,
       exportFormat: data.exportFormat,
       exportDate,
+      customerId,
       customerName: data.customerName,
       customerPhone: data.customerPhone,
       customerAddress: data.customerAddress,
@@ -3202,7 +3242,7 @@ async function saveExportedInvoiceRecord(
       createdAt: now,
       updatedAt: now,
     }
-    await setDoc(ref, record)
+    await persistInvoiceRecord(ref, record)
     return
   }
   const ref = doc(invoicesCollection)
@@ -3219,6 +3259,7 @@ async function saveExportedInvoiceRecord(
     discount: data.discount ? { ...data.discount } : null,
     exportFormat: data.exportFormat,
     exportDate,
+    customerId,
     customerName: data.customerName,
     customerPhone: data.customerPhone,
     customerAddress: data.customerAddress,
@@ -3228,7 +3269,7 @@ async function saveExportedInvoiceRecord(
     createdAt: now,
     updatedAt: now,
   }
-  await setDoc(ref, record)
+  await persistInvoiceRecord(ref, record)
 }
 
 function openInvoiceCustomerExportDialog(
@@ -3269,9 +3310,15 @@ function openInvoiceCustomerExportDialog(
         <p>سيتم تصدير الفاتورة الحالية كما هي بدون تعديل بياناتها. يمكنك اختيار نوع التصدير والمعاينة وإضافة ملاحظة اختيارية تُطبع في أسفل الفاتورة.</p>
       </div>` : `
       <div class="invoice-customer-fields">
-        <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span>
-          <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="اسم الزبون" autocomplete="name">
-        </label>
+        <div class="invoice-customer-name-field">
+          <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
+          <div class="invoice-customer-name-control">
+            <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="اسم الزبون" autocomplete="name">
+            <button type="button" class="invoice-customer-picker-trigger" aria-label="اختيار زبون مسجل" title="اختيار زبون مسجل">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"/></svg>
+            </button>
+          </div>
+        </div>
         <label for="invoice-customer-export-phone">رقم هاتف الزبون <span>(اختياري)</span>
           <input id="invoice-customer-export-phone" type="tel" maxlength="24" inputmode="tel" placeholder="رقم الهاتف" autocomplete="tel">
         </label>
@@ -3328,6 +3375,7 @@ function openInvoiceCustomerExportDialog(
   const phoneInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-phone')
   const addressInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-address')
   const responsibleTeacherInput = backdrop.querySelector<HTMLInputElement>('#invoice-responsible-teacher-name')
+  const customerPickerButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-picker-trigger')
   const percentageInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-percentage')
   const amountInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-amount')
   const exportNoteInput = backdrop.querySelector<HTMLTextAreaElement>('#invoice-export-note')
@@ -3354,6 +3402,8 @@ function openInvoiceCustomerExportDialog(
   let previewUpdateTimer: number | undefined
   let confirmingExport = false
   let committedInvoiceNumber: string | null = fixedInvoiceNumber
+  let selectedCustomerId = data.customerId
+  let closeCustomerPicker: ((restoreFocus?: boolean) => void) | null = null
 
   if (nameInput) nameInput.value = data.customerName || ''
   if (phoneInput) phoneInput.value = data.customerPhone || ''
@@ -3427,6 +3477,7 @@ function openInvoiceCustomerExportDialog(
       data.customerName = nameInput?.value.trim() || ''
       data.customerPhone = phoneInput?.value.trim() || ''
       data.customerAddress = addressInput?.value.trim() || ''
+      data.customerId = selectedCustomerId
       data.responsibleTeacherName = responsibleTeacherInput?.value.trim() || ''
       data.discount = discount
       if (carriedPayments) {
@@ -3463,6 +3514,77 @@ function openInvoiceCustomerExportDialog(
       void renderPreview()
     }, 100)
   }
+  customerPickerButton?.addEventListener('click', () => {
+    if (closeCustomerPicker) return
+    const pickerBackdrop = document.createElement('div')
+    pickerBackdrop.className = 'invoice-customer-picker-backdrop'
+    pickerBackdrop.innerHTML = `
+      <section class="invoice-customer-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="invoice-customer-picker-title">
+        <header class="invoice-customer-picker-header">
+          <div>
+            <p>الزبائن</p>
+            <h3 id="invoice-customer-picker-title">اختيار زبون مسجل</h3>
+          </div>
+          <button type="button" class="invoice-customer-picker-close" aria-label="إغلاق">${svg('close')}</button>
+        </header>
+        <label class="invoice-customer-picker-search">
+          <input type="search" placeholder="ابحث عن اسم أو هاتف الزبون" aria-label="ابحث عن زبون">
+        </label>
+        <div class="invoice-customer-picker-list" role="listbox" aria-label="الزبائن المسجلون"></div>
+        <p class="invoice-customer-picker-empty" hidden></p>
+      </section>`
+    const searchInput = pickerBackdrop.querySelector<HTMLInputElement>('.invoice-customer-picker-search input')!
+    const customerList = pickerBackdrop.querySelector<HTMLElement>('.invoice-customer-picker-list')!
+    const emptyState = pickerBackdrop.querySelector<HTMLElement>('.invoice-customer-picker-empty')!
+    const closeButton = pickerBackdrop.querySelector<HTMLButtonElement>('.invoice-customer-picker-close')!
+    const renderCustomers = () => {
+      const search = searchInput.value.trim().toLocaleLowerCase('ar')
+      const visibleCustomers = [...customers]
+        .filter((customer) => [customer.name, customer.phone, customer.address]
+          .join(' ')
+          .toLocaleLowerCase('ar')
+          .includes(search))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+      customerList.innerHTML = visibleCustomers.map((customer) => `
+        <button type="button" class="invoice-customer-picker-option" role="option" data-customer-id="${escapeHtml(customer.id)}">
+          <span class="invoice-customer-picker-option-main">
+            <strong>${escapeHtml(customer.name)}</strong>
+            <span>${customer.phone ? escapeHtml(customer.phone) : 'بدون رقم هاتف'}${customer.address ? ` · ${escapeHtml(customer.address)}` : ''}</span>
+          </span>
+          <span class="invoice-customer-picker-option-arrow" aria-hidden="true">‹</span>
+        </button>`).join('')
+      emptyState.textContent = customers.length
+        ? 'لا توجد نتائج مطابقة لبحثك.'
+        : 'لا يوجد زبائن مسجلون بعد. يمكنك إدخال الاسم يدويًا.'
+      emptyState.hidden = visibleCustomers.length > 0
+    }
+    const closePicker = (restoreFocus = true) => {
+      pickerBackdrop.remove()
+      closeCustomerPicker = null
+      if (restoreFocus && customerPickerButton?.isConnected) customerPickerButton.focus()
+    }
+    closeCustomerPicker = closePicker
+    closeButton.addEventListener('click', () => closePicker())
+    pickerBackdrop.addEventListener('click', (event) => {
+      if (event.target === pickerBackdrop) closePicker()
+    })
+    searchInput.addEventListener('input', renderCustomers)
+    customerList.addEventListener('click', (event) => {
+      if (!(event.target instanceof Element)) return
+      const option = event.target.closest<HTMLButtonElement>('[data-customer-id]')
+      const customer = customers.find((item) => item.id === option?.dataset.customerId)
+      if (!customer || !nameInput || !phoneInput || !addressInput) return
+      selectedCustomerId = customer.id
+      data.customerId = customer.id
+      nameInput.value = customer.name
+      phoneInput.value = customer.phone
+      addressInput.value = customer.address
+      invalidatePreview()
+      closePicker()
+    })
+    renderCustomers()
+    document.body.append(pickerBackdrop)
+  })
   const renderPreview = async (notifyInvalid = false) => {
     if (previewUpdateTimer !== undefined) {
       window.clearTimeout(previewUpdateTimer)
@@ -3511,6 +3633,7 @@ function openInvoiceCustomerExportDialog(
       nameInput,
       phoneInput,
       addressInput,
+      customerPickerButton,
       responsibleTeacherInput,
       percentageInput,
       amountInput,
@@ -3548,7 +3671,14 @@ function openInvoiceCustomerExportDialog(
     renderDiscountSummary()
     invalidatePreview()
   })
-  ;[nameInput, phoneInput, addressInput, responsibleTeacherInput].forEach((input) =>
+  nameInput?.addEventListener('input', () => {
+    const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId)
+    if (selectedCustomer && nameInput.value.trim() !== selectedCustomer.name.trim()) {
+      selectedCustomerId = null
+    }
+    invalidatePreview()
+  })
+  ;[phoneInput, addressInput, responsibleTeacherInput].forEach((input) =>
     input?.addEventListener('input', invalidatePreview))
   formatInputs.forEach((input) => input.addEventListener('change', invalidatePreview))
   exportNoteInput?.addEventListener('input', invalidatePreview)
@@ -3568,10 +3698,14 @@ function openInvoiceCustomerExportDialog(
   const closeDialog = () => {
     if (previewUpdateTimer !== undefined) window.clearTimeout(previewUpdateTimer)
     document.removeEventListener('keydown', handleDialogKeydown)
+    closeCustomerPicker?.(false)
     backdrop.remove()
   }
   const handleDialogKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && !confirmingExport) closeDialog()
+    if (event.key === 'Escape' && !confirmingExport) {
+      if (closeCustomerPicker) closeCustomerPicker()
+      else closeDialog()
+    }
   }
   closeButton.addEventListener('click', () => {
     if (!confirmingExport) closeDialog()
@@ -4057,6 +4191,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       discount: null,
       exportFormat: 'image-high',
       exportDate,
+      customerId: null,
       customerName: '',
       customerPhone: '',
       customerAddress: '',
