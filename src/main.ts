@@ -690,10 +690,11 @@ function renderCustomersSection() {
             <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
             <button class="service-main customer-main" type="button" data-edit-customer="${customer.id}">
               <span class="customer-identity-line">
-                <span class="service-name">${escapeHtml(customer.name)}</span>
-                <span class="customer-identity-separator" aria-hidden="true">|</span>
-                <span class="customer-address">${customer.address ? escapeHtml(customer.address) : 'بدون عنوان'}</span>
-                ${customer.neighborhood ? `<span class="customer-identity-separator" aria-hidden="true">|</span><span class="customer-neighborhood">${escapeHtml(customer.neighborhood)}</span>` : ''}
+                <span class="service-name customer-identity-name">${escapeHtml(customer.name)}</span>
+                <span class="customer-address-line">
+                  <span class="customer-address">${customer.address ? escapeHtml(customer.address) : 'بدون عنوان'}</span>
+                  ${customer.neighborhood ? `<span class="customer-identity-separator" aria-hidden="true">|</span><span class="customer-neighborhood">${escapeHtml(customer.neighborhood)}</span>` : ''}
+                </span>
               </span>
               ${customer.phone ? `<span class="customer-phone">${escapeHtml(customer.phone)}</span>` : ''}
               ${customer.notes ? `<span class="service-description customer-notes">${escapeHtml(customer.notes)}</span>` : ''}
