@@ -142,6 +142,7 @@ type InvoiceRecord = {
   customerName: string
   customerPhone: string
   customerAddress: string
+  workshopName: string
   responsibleTeacherName: string
   payments: InvoicePayment[]
   savedAt: string
@@ -478,6 +479,7 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
     customerName: typeof data.customerName === 'string' ? data.customerName : '',
     customerPhone: typeof data.customerPhone === 'string' ? data.customerPhone : '',
     customerAddress: typeof data.customerAddress === 'string' ? data.customerAddress : '',
+    workshopName: typeof data.workshopName === 'string' ? data.workshopName : '',
     responsibleTeacherName: typeof data.responsibleTeacherName === 'string' ? data.responsibleTeacherName : '',
     payments,
     savedAt: typeof data.savedAt === 'string' ? data.savedAt : '',
@@ -731,7 +733,7 @@ function renderInvoicesSection() {
   const roots = [...invoiceRecords]
     .filter((record) => record.rootId === record.id)
     .sort((a, b) => Number(b.rootInvoiceNumber || b.invoiceNumber) - Number(a.rootInvoiceNumber || a.invoiceNumber))
-    .filter((record) => [record.invoiceNumber, record.rootInvoiceNumber, record.customerName, record.customerPhone].join(' ').toLocaleLowerCase('ar').includes(search))
+    .filter((record) => [record.invoiceNumber, record.rootInvoiceNumber, record.customerName, record.customerPhone, record.workshopName].join(' ').toLocaleLowerCase('ar').includes(search))
   if (count) count.textContent = String(roots.length)
   const formatDisplayDateTime = (value: string) => {
     const trimmed = value.trim()
@@ -755,6 +757,7 @@ function renderInvoicesSection() {
         const customerName = latest.customerName?.trim() || 'بدون اسم زبون'
         const customerPhone = latest.customerPhone?.trim() || ''
         const customerAddress = latest.customerAddress?.trim() || ''
+        const workshopName = latest.workshopName?.trim() || ''
         const matchedCustomer = customers.find((customer) => customer.id === latest.customerId)
           || customers.find((customer) =>
           customer.name.trim() === customerName
@@ -766,13 +769,13 @@ function renderInvoicesSection() {
         const lastUpdate = formatDisplayDateTime(latest.exportDate || latest.savedAt || latest.createdAt || '')
 
         return `
-          <article class="service-row invoice-row invoice-summary-card">
+          <fieldset class="service-row invoice-row invoice-summary-card">
+            ${workshopName ? `<legend class="invoice-summary-workshop">ورشة ${escapeHtml(workshopName)}</legend>` : ''}
             <button class="invoice-summary-main" type="button" data-open-invoice-root="${record.rootId}" aria-label="فتح الفاتورة رقم ${escapeHtml(record.rootInvoiceNumber || record.invoiceNumber)}">
               <header class="invoice-summary-head">
                 <div class="invoice-summary-identity">
                   <span class="service-order" aria-label="فاتورة ${index + 1}">${index + 1}</span>
                   <div class="invoice-summary-titles">
-                    <span class="invoice-summary-kicker">ملخص الفاتورة</span>
                     <span class="service-name">فاتورة رقم ${escapeHtml(record.rootInvoiceNumber || record.invoiceNumber)}</span>
                   </div>
                 </div>
@@ -827,7 +830,7 @@ function renderInvoicesSection() {
             <button class="invoice-summary-toggle" type="button" aria-expanded="false" aria-label="عرض تفاصيل إضافية للفاتورة">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
             </button>
-          </article>
+          </fieldset>
         `
       }).join('')}
     </section>
@@ -1329,6 +1332,7 @@ function renderInvoiceVersionsDialog(rootId: string) {
             <button class="secondary-button invoice-corrections-log-button" type="button" id="invoice-corrections-log" title="سجل التعديلات والحركات">سجل الحركات</button>
           </div>
           <p>${escapeHtml(latest.customerName || 'بدون اسم زبون')}${latest.customerPhone ? ` — ${escapeHtml(latest.customerPhone)}` : ''}${latest.customerAddress ? ` — ${escapeHtml(latest.customerAddress)}` : ''}</p>
+          ${latest.workshopName?.trim() ? `<fieldset class="invoice-version-workshop"><legend>ورشة ${escapeHtml(latest.workshopName.trim())}</legend></fieldset>` : ''}
           ${latest.responsibleTeacherName ? `<p>المعلم المسؤول: ${escapeHtml(latest.responsibleTeacherName)}</p>` : ''}
           <p>الإجمالي: ${money(latest.total)} دولار${latest.discount ? ` | الخصم: ${money(latest.discount.amount)} دولار` : ''} | الصافي: ${money(net)} دولار</p>
           <p>المدفوع: ${money(paymentsTotal)} دولار | المتبقي: ${money(remaining)} دولار</p>
@@ -1728,6 +1732,7 @@ type InvoiceExportData = {
   customerPhone: string
   customerAddress: string
   customerNeighborhood: string
+  workshopName: string
   responsibleTeacherName: string
   upfrontPayment: number | null
   upfrontPaymentDate: string
@@ -3195,6 +3200,7 @@ function invoiceRecordToExportData(record: InvoiceRecord): InvoiceExportData {
     customerPhone: record.customerPhone || '',
     customerAddress: record.customerAddress || '',
     customerNeighborhood: customers.find((customer) => customer.id === record.customerId)?.neighborhood || '',
+    workshopName: record.workshopName || '',
     responsibleTeacherName: record.responsibleTeacherName || '',
     upfrontPayment: lastPayment ? lastPayment.amount : null,
     upfrontPaymentDate: lastPayment?.date || '',
@@ -3214,6 +3220,7 @@ function invoiceTermsSignature(record: InvoiceRecord): string {
     customerName: record.customerName,
     customerPhone: record.customerPhone,
     customerAddress: record.customerAddress,
+    workshopName: record.workshopName,
     responsibleTeacherName: record.responsibleTeacherName,
   })
 }
@@ -3262,6 +3269,7 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
   push('اسم الزبون', (previous.customerName || '').trim() || '—', (current.customerName || '').trim() || '—', 'بيانات')
   push('رقم الهاتف', (previous.customerPhone || '').trim() || '—', (current.customerPhone || '').trim() || '—', 'بيانات')
   push('العنوان', (previous.customerAddress || '').trim() || '—', (current.customerAddress || '').trim() || '—', 'بيانات')
+  push('اسم الورشة', (previous.workshopName || '').trim() || '—', (current.workshopName || '').trim() || '—', 'بيانات')
   push('المعلم المسؤول', (previous.responsibleTeacherName || '').trim() || '—', (current.responsibleTeacherName || '').trim() || '—', 'بيانات')
 
   const prevDiscount = describeDiscount(previous.discount)
@@ -3457,6 +3465,7 @@ async function saveExportedInvoiceRecord(
       customerName: data.customerName,
       customerPhone: data.customerPhone,
       customerAddress: data.customerAddress,
+      workshopName: data.workshopName,
       responsibleTeacherName: data.responsibleTeacherName,
       payments,
       savedAt: now,
@@ -3484,6 +3493,7 @@ async function saveExportedInvoiceRecord(
     customerName: data.customerName,
     customerPhone: data.customerPhone,
     customerAddress: data.customerAddress,
+    workshopName: data.workshopName,
     responsibleTeacherName: data.responsibleTeacherName,
     payments,
     savedAt: now,
@@ -3553,6 +3563,9 @@ function openInvoiceCustomerExportDialog(
         <label for="invoice-responsible-teacher-name">اسم المعلم المسؤول <span>(اختياري)</span>
           <input id="invoice-responsible-teacher-name" type="text" maxlength="80" placeholder="اسم المعلم المسؤول">
         </label>
+        <label for="invoice-workshop-name">اسم الورشة <span>(اختياري)</span>
+          <input id="invoice-workshop-name" type="text" maxlength="100" placeholder="اسم الورشة">
+        </label>
       </div>`}
       <div class="invoice-export-summary">
         <div class="invoice-export-count-card"><span>عدد الخدمات</span><strong>${data.rows.filter((row) => !row.cancelled).length}</strong></div>
@@ -3602,6 +3615,7 @@ function openInvoiceCustomerExportDialog(
   const addressInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-address')
   const neighborhoodInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-neighborhood')
   const responsibleTeacherInput = backdrop.querySelector<HTMLInputElement>('#invoice-responsible-teacher-name')
+  const workshopNameInput = backdrop.querySelector<HTMLInputElement>('#invoice-workshop-name')
   const customerPickerButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-picker-trigger')
   const percentageInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-percentage')
   const amountInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-amount')
@@ -3654,6 +3668,7 @@ function openInvoiceCustomerExportDialog(
     if (addressInput) addressInput.disabled = true
   }
   if (responsibleTeacherInput) responsibleTeacherInput.value = data.responsibleTeacherName || ''
+  if (workshopNameInput) workshopNameInput.value = data.workshopName || ''
   if (exportNoteInput) exportNoteInput.value = data.exportNote || ''
   formatInputs.forEach((input) => { input.checked = input.value === data.exportFormat })
   if (allowDataEdit && data.discount) {
@@ -3723,6 +3738,7 @@ function openInvoiceCustomerExportDialog(
       data.customerPhone = phoneInput?.value.trim() || ''
       data.customerAddress = addressInput?.value.trim() || ''
       data.customerNeighborhood = neighborhoodInput?.value.trim() || ''
+      data.workshopName = workshopNameInput?.value.trim() || ''
       data.customerId = selectedCustomerId
       data.responsibleTeacherName = responsibleTeacherInput?.value.trim() || ''
       data.discount = discount
@@ -4576,6 +4592,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       customerPhone: '',
       customerAddress: '',
       customerNeighborhood: '',
+      workshopName: '',
       responsibleTeacherName: '',
       upfrontPayment: null,
       upfrontPaymentDate: '',
@@ -4736,6 +4753,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           data.customerPhone = sourceRecord.customerPhone
           data.customerAddress = sourceRecord.customerAddress
           data.customerNeighborhood = customers.find((customer) => customer.id === sourceRecord.customerId)?.neighborhood || ''
+          data.workshopName = sourceRecord.workshopName || ''
           data.responsibleTeacherName = sourceRecord.responsibleTeacherName
           data.discount = sourceRecord.discount ? { ...sourceRecord.discount } : null
           data.exportFormat = sourceRecord.exportFormat
