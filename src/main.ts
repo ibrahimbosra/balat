@@ -1975,10 +1975,14 @@ function drawCustomerDetails(
   drawDetailSegments(context, width, y, customerDetailsSegments(details))
 }
 
-async function exportServicesToExcel(button: HTMLButtonElement, rows: ExportServiceRow[]) {
+async function exportServicesToExcel(
+  button: HTMLButtonElement,
+  rows: ExportServiceRow[],
+  details: { customerName?: string; customerPhone?: string; customerAddress?: string; exportNote?: string } = {},
+): Promise<boolean> {
   if (!rows.length) {
     showToast('لا توجد خدمات محددة للتصدير.')
-    return
+    return false
   }
   button.disabled = true
   try {
@@ -1995,6 +1999,23 @@ async function exportServicesToExcel(button: HTMLButtonElement, rows: ExportServ
       { header: 'الوحدة', key: 'unit', width: 20 },
       { header: 'الوصف', key: 'description', width: 38 },
     ]
+    const customerDetails = [
+      { label: 'اسم الزبون', value: details.customerName?.trim() || '' },
+      { label: 'رقم الهاتف', value: details.customerPhone?.trim() || '' },
+      { label: 'العنوان', value: details.customerAddress?.trim() || '' },
+      { label: 'ملاحظة', value: details.exportNote?.trim() || '' },
+    ].filter(({ value }) => Boolean(value))
+    if (customerDetails.length) {
+      worksheet.spliceRows(1, 0, ...customerDetails.map(({ label, value }) => [label, value]))
+      customerDetails.forEach((_, index) => {
+        const rowNumber = index + 1
+        worksheet.mergeCells(rowNumber, 2, rowNumber, 5)
+        worksheet.getRow(rowNumber).height = 22
+        worksheet.getCell(rowNumber, 1).font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF203044' } }
+        worksheet.getCell(rowNumber, 2).font = { name: 'Arial', size: 11, color: { argb: 'FF203044' } }
+      })
+    }
+    const headerRowNumber = customerDetails.length + 1
     worksheet.addRows(rows.map(({ service, exportPrice }) => ({
       name: service.name,
       price: exportPrice,
@@ -2003,15 +2024,20 @@ async function exportServicesToExcel(button: HTMLButtonElement, rows: ExportServ
       description: service.description,
     })))
     worksheet.eachRow((row, rowNumber) => {
-      row.height = rowNumber === 1 ? 28 : 24
+      if (rowNumber === headerRowNumber) row.height = 28
+      else if (rowNumber > headerRowNumber) row.height = 24
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.alignment = { horizontal: 'right', vertical: 'middle' }
-        cell.font = { name: 'Arial', size: rowNumber === 1 ? 12 : 11, bold: rowNumber === 1, color: { argb: rowNumber === 1 ? 'FFFFFFFF' : 'FF203044' } }
-        if (rowNumber === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
+        if (rowNumber === headerRowNumber) {
+          cell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
+        } else if (rowNumber > customerDetails.length) {
+          cell.font = { name: 'Arial', size: 11, bold: false, color: { argb: 'FF203044' } }
+        }
       })
     })
     worksheet.getColumn('price').numFmt = '0.00'
-    worksheet.autoFilter = { from: 'A1', to: 'E1' }
+    worksheet.autoFilter = { from: `A${headerRowNumber}`, to: `E${headerRowNumber}` }
     const buffer = await workbook.xlsx.writeBuffer()
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
@@ -2023,9 +2049,11 @@ async function exportServicesToExcel(button: HTMLButtonElement, rows: ExportServ
     link.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     showToast('تم تصدير قائمة الخدمات كملف Excel.')
+    return true
   } catch (error) {
     console.error('Failed to export services Excel:', error)
     showToast('تعذر تصدير Excel. حاول مجددًا.')
+    return false
   } finally {
     button.disabled = false
   }
@@ -2035,13 +2063,13 @@ async function exportServicesToImage(
   button: HTMLButtonElement,
   imageScale: ImageExportScale,
   rows: ExportServiceRow[],
-  options: { customerName?: string; customerPhone?: string; customerAddress?: string; previewOnly?: boolean } = {},
-) {
+  options: { customerName?: string; customerPhone?: string; customerAddress?: string; exportNote?: string; previewOnly?: boolean } = {},
+): Promise<boolean | string[]> {
   if (!rows.length) {
     showToast('لا توجد خدمات محددة للتصدير.')
-    return
+    return false
   }
-  button.disabled = true
+  if (!options.previewOnly) button.disabled = true
   try {
     await document.fonts.ready
     await Promise.all([
@@ -2067,6 +2095,7 @@ async function exportServicesToImage(
     const customerName = options.customerName?.trim()
     const customerPhone = options.customerPhone?.trim()
     const customerAddress = options.customerAddress?.trim()
+    const exportNote = options.exportNote?.trim() || ''
 
     const previewUrls: string[] = []
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
@@ -2191,18 +2220,29 @@ async function exportServicesToImage(
         context.fillText(`${money(exportPrice)} ${currencyText}`, 115, y + 27)
       }
 
+      const noteLines = exportNote && pageIndex === pageCount - 1
+        ? wrapCanvasText(context, `ملاحظة: ${exportNote}`, tableWidth).slice(0, 2)
+        : []
+      if (noteLines.length) {
+        context.fillStyle = '#203044'
+        context.textAlign = 'center'
+        context.font = '600 11px "Cairo", sans-serif'
+        const noteStartY = 1099 - (noteLines.length - 1) * 14
+        noteLines.forEach((line, index) => context.fillText(line, width / 2, noteStartY + index * 14, tableWidth))
+      }
+
       context.fillStyle = '#203044'
       context.textAlign = 'center'
       context.font = '800 20px "Cairo", sans-serif'
-      context.fillText('الكردي لأعمال البلاط والسيراميك والرخام', width / 2, 1115)
+      context.fillText('الكردي لأعمال البلاط والسيراميك والرخام', width / 2, noteLines.length ? 1125 : 1115)
       context.fillStyle = '#007d79'
       context.font = '800 18px "Cairo", sans-serif'
-      context.fillText('نسعد بخدمتكم', width / 2, 1148)
+      context.fillText('نسعد بخدمتكم', width / 2, noteLines.length ? 1155 : 1148)
       if (pageCount > 1) {
         context.fillStyle = '#718096'
         context.textAlign = 'center'
         context.font = '600 14px "Cairo", sans-serif'
-        context.fillText(`صفحة ${pageIndex + 1} من ${pageCount}`, width / 2, 1170)
+        context.fillText(`صفحة ${pageIndex + 1} من ${pageCount}`, width / 2, noteLines.length ? 1177 : 1170)
       }
 
       const blob = await new Promise<Blob>((resolve, reject) => {
@@ -2226,68 +2266,116 @@ async function exportServicesToImage(
     }
     if (options.previewOnly) return previewUrls
     showToast(pageCount > 1 ? `تم تصدير ${pageCount} صفحات PNG.` : 'تم تصدير قائمة الخدمات كصورة PNG.')
+    return true
   } catch (error) {
     console.error('Failed to export services image:', error)
     showToast('تعذر تصدير الصورة. حاول مجددًا.')
+    return false
   } finally {
-    button.disabled = false
+    if (!options.previewOnly) button.disabled = false
   }
 }
 
-function openImageExportPreview(imageScale: ImageExportScale, rows: ExportServiceRow[]) {
+function openServicesExportDialog(rows: ExportServiceRow[]) {
   if (!rows.length) {
     showToast('لا توجد خدمات محددة للتصدير.')
     return
   }
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
-    <p class="eyebrow">معاينة صورة القائمة</p>
-    <h2>تأكيد بيانات التصدير</h2>
-    <div class="export-preview-fields">
+    <p class="eyebrow">تجهيز قائمة الخدمات</p>
+    <h2>معلومات التصدير والمعاينة</h2>
+    <div class="services-export-fields">
       <label>اسم الزبون
-        <input id="export-customer-name" type="text" maxlength="20" placeholder="أدخل اسم الزبون إن رغبت لطباعته مع القائمة">
+        <input id="export-customer-name" type="text" maxlength="20" placeholder="اسم الزبون">
       </label>
       <label>رقم هاتف الزبون
-        <input id="export-customer-phone" type="tel" maxlength="15" placeholder="أدخل رقم هاتف الزبون إن رغبت لطباعته مع القائمة">
+        <input id="export-customer-phone" type="tel" maxlength="15" placeholder="رقم الهاتف">
       </label>
       <label>عنوان الزبون
-        <input id="export-customer-address" type="text" maxlength="15" placeholder="أدخل عنوان الزبون إن رغبت لطباعته مع القائمة">
+        <input id="export-customer-address" type="text" maxlength="15" placeholder="عنوان الزبون">
+      </label>
+      <label>ملاحظة
+        <input id="export-customer-note" type="text" maxlength="100" placeholder="ملاحظة اختيارية">
       </label>
     </div>
-    <div class="export-preview-wrap">
+    <fieldset class="invoice-export-format services-export-format">
+      <legend>نوع التصدير</legend>
+      <label><input type="radio" name="services-export-format" value="image-high" checked> صورة فائقة</label>
+      <label><input type="radio" name="services-export-format" value="image"> صورة عادية</label>
+      <label><input type="radio" name="services-export-format" value="excel"> ملف Excel</label>
+    </fieldset>
+    <div class="services-export-preview">
+      <p class="services-export-preview-status" aria-live="polite">جارٍ إعداد المعاينة...</p>
+      <div class="export-preview-wrap">
       <img id="export-preview-image" alt="معاينة قائمة أسعار الخدمات">
+      </div>
     </div>
-    <button class="primary-button" id="confirm-export-image" type="button">تأكيد التصدير</button>
+    <div class="services-export-actions">
+      <button class="secondary-button" id="cancel-services-export" type="button">إلغاء</button>
+      <button class="primary-button" id="confirm-services-export" type="button">تصدير</button>
+    </div>
   `)
+  element.querySelector<HTMLElement>('.modal')!.classList.add('services-export-modal')
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
   const nameInput = element.querySelector<HTMLInputElement>('#export-customer-name')!
   const phoneInput = element.querySelector<HTMLInputElement>('#export-customer-phone')!
   const addressInput = element.querySelector<HTMLInputElement>('#export-customer-address')!
+  const noteInput = element.querySelector<HTMLInputElement>('#export-customer-note')!
   const preview = element.querySelector<HTMLImageElement>('#export-preview-image')!
-  const confirmButton = element.querySelector<HTMLButtonElement>('#confirm-export-image')!
+  const previewStatus = element.querySelector<HTMLElement>('.services-export-preview-status')!
+  const confirmButton = element.querySelector<HTMLButtonElement>('#confirm-services-export')!
+  const formatInputs = [...element.querySelectorAll<HTMLInputElement>('input[name="services-export-format"]')]
+  let previewVersion = 0
+  let previewUpdateTimer: number | undefined
+  const exportDetails = () => ({
+    customerName: nameInput.value,
+    customerPhone: phoneInput.value,
+    customerAddress: addressInput.value,
+    exportNote: noteInput.value,
+  })
 
   const refreshPreview = async () => {
     preview.classList.add('is-loading')
-    const urls = await exportServicesToImage(confirmButton, 1, rows, {
-      customerName: nameInput.value,
-      customerPhone: phoneInput.value,
-      customerAddress: addressInput.value,
-      previewOnly: true,
-    })
-    if (urls?.[0]) preview.src = urls[0]
+    previewStatus.textContent = 'جارٍ تحديث المعاينة...'
+    const version = ++previewVersion
+    const result = await exportServicesToImage(confirmButton, 1, rows, { ...exportDetails(), previewOnly: true })
+    if (version !== previewVersion) return
+    if (Array.isArray(result) && result[0]) {
+      preview.src = result[0]
+      previewStatus.textContent = 'تُعرض المعاينة بالصورة العادية؛ وسيُستخدم نوع التصدير المحدد عند التصدير.'
+    } else {
+      previewStatus.textContent = 'تعذر إعداد المعاينة.'
+    }
     preview.classList.remove('is-loading')
   }
 
-  nameInput.addEventListener('input', () => void refreshPreview())
-  phoneInput.addEventListener('input', () => void refreshPreview())
-  addressInput.addEventListener('input', () => void refreshPreview())
+  const schedulePreview = () => {
+    if (previewUpdateTimer !== undefined) window.clearTimeout(previewUpdateTimer)
+    previewUpdateTimer = window.setTimeout(() => {
+      previewUpdateTimer = undefined
+      void refreshPreview()
+    }, 180)
+  }
+  element.querySelector('#cancel-services-export')!.addEventListener('click', () => element.remove())
+  ;[nameInput, phoneInput, addressInput, noteInput].forEach((input) =>
+    input.addEventListener('input', schedulePreview))
   confirmButton.addEventListener('click', async () => {
-    await exportServicesToImage(confirmButton, imageScale, rows, {
-      customerName: nameInput.value,
-      customerPhone: phoneInput.value,
-      customerAddress: addressInput.value,
-    })
-    element.remove()
+    const selectedFormat = formatInputs.find((input) => input.checked)?.value
+    if (selectedFormat !== 'image-high' && selectedFormat !== 'image' && selectedFormat !== 'excel') {
+      showToast('اختر نوع التصدير.')
+      return
+    }
+    const details = exportDetails()
+    const successful = selectedFormat === 'excel'
+      ? await exportServicesToExcel(confirmButton, rows, details)
+      : await exportServicesToImage(
+        confirmButton,
+        selectedFormat === 'image-high' ? highQualityImageScale : 1,
+        rows,
+        details,
+      )
+    if (successful === true) element.remove()
   })
   void refreshPreview()
 }
@@ -4553,10 +4641,9 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     <div id="export-services-panel" hidden class="hidden">
       <div class="export-service-list"></div>
       <div class="export-summary" aria-live="polite"></div>
-      <div class="export-grid">
-        <button class="secondary-button" id="export-png" type="button">صورة</button>
-        <button class="primary-button" id="export-png-high" type="button">صورة فائقة</button>
-        <button class="secondary-button" id="export-excel" type="button">ملف Excel</button>
+      <div class="export-service-actions">
+        <button class="secondary-button" id="cancel-export-services" type="button">إلغاء</button>
+        <button class="primary-button" id="continue-export-services" type="button">متابعة التجهيز</button>
       </div>
     </div>
     <div id="export-invoice-panel"></div>`, { preserveExisting: Boolean(options?.correction) })
@@ -5259,12 +5346,16 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       exportPrice: exportPrices.get(service.id) ?? service.price,
       wasModified: modified.has(service.id),
     }))
-  element.querySelector('#export-excel')!.addEventListener('click', (event) =>
-    exportServicesToExcel(event.currentTarget as HTMLButtonElement, getRows()))
-  element.querySelector('#export-png')!.addEventListener('click', () =>
-    openImageExportPreview(1, getRows()))
-  element.querySelector('#export-png-high')!.addEventListener('click', () =>
-    openImageExportPreview(highQualityImageScale, getRows()))
+  element.querySelector('#cancel-export-services')!.addEventListener('click', () => element.remove())
+  element.querySelector('#continue-export-services')!.addEventListener('click', () => {
+    const rows = getRows()
+    if (!rows.length) {
+      showToast('اختر خدمة واحدة على الأقل قبل متابعة التجهيز.')
+      return
+    }
+    element.remove()
+    openServicesExportDialog(rows)
+  })
 }
 
 async function loadSettings(user: User, ownerId: string, sessionId: number) {
