@@ -500,6 +500,26 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   border-radius: 20px;
   padding: 24px 20px 20px;
 }
+.modal.invoice-correction-modal {
+  display: flex;
+  width: min(calc(100vw - 24px), 720px);
+  height: min(820px, calc(100dvh - 24px));
+  max-height: calc(100dvh - 24px);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px 20px 20px;
+}
+.modal.invoice-correction-modal > h2 {
+  flex: 0 0 auto;
+  margin: 0 44px 16px;
+  text-align: center;
+}
+.modal.invoice-correction-modal #export-invoice-panel {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
 .modal:has(.export-tabs) > .eyebrow {
   margin: 4px 44px 12px;
   text-align: center;
@@ -2268,6 +2288,8 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   .list-head h1 { font-size: 15px; white-space: nowrap; }
   .list-head h1 span { min-width: 28px; height: 28px; margin-inline-start: 5px; font-size: 11px; }
   .modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 20px 14px 16px; }
+  .modal.invoice-correction-modal { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); padding: 20px 14px 16px; }
+  .modal.invoice-correction-modal > h2 { margin: 0 44px 12px; }
   .modal-backdrop:has(.invoice-history-modal) { padding: 8px; }
   .modal-backdrop:has(.invoice-history-modal) > .invoice-history-modal {
     width: 100%;

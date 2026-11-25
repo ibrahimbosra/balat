@@ -4246,6 +4246,9 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       </div>
     </div>
     <div id="export-invoice-panel"></div>`)
+  if (options?.correction) {
+    element.querySelector<HTMLElement>('.modal')!.classList.add('invoice-correction-modal')
+  }
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
   const list = element.querySelector<HTMLElement>('.export-service-list')!
   const summary = element.querySelector<HTMLElement>('.export-summary')!
