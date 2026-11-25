@@ -318,6 +318,14 @@ function normalizeCustomerPhone(value: string) {
     .replace(/\D/g, '')
 }
 
+function normalizeWhatsAppPhone(value: string): string | null {
+  let digits = normalizeCustomerPhone(value)
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  if (digits.startsWith('0')) digits = `963${digits.slice(1)}`
+  else if (digits.length === 9 && digits.startsWith('9')) digits = `963${digits}`
+  return digits.length >= 8 && digits.length <= 15 ? digits : null
+}
+
 function findCustomerIdentityMatch(
   name: string,
   phone: string,
@@ -1386,7 +1394,7 @@ function renderInvoiceVersionsDialog(rootId: string) {
 
         <div class="invoice-ledger-section">
           <div class="invoice-ledger-head">
-            <strong>سجلات الدفعات</strong>
+            <strong>سجلات الدفعات <span class="invoice-payment-count" aria-label="عدد الدفعات المدفوعة">${paymentEntries.length}</span></strong>
             <button class="secondary-button" type="button" id="invoice-add-payment-entry"${remaining <= 0.00001 ? ' disabled' : ''}>إضافة دفعة</button>
           </div>
           ${paymentEntries.length ? `<div class="invoice-payment-records">${paymentEntries.map(({ payment, index }) => `
@@ -2737,23 +2745,17 @@ async function exportInvoiceImage(
 ) {
   button.disabled = true
   try {
-    const canvases = await renderInvoiceCanvases(data, imageScale)
-    for (let pageIndex = 0; pageIndex < canvases.length; pageIndex += 1) {
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvases[pageIndex].toBlob((value) => {
-          if (value) resolve(value)
-          else reject(new Error('Could not create invoice image'))
-        }, 'image/png')
-      })
-      const url = URL.createObjectURL(blob)
+    const files = await renderInvoiceImageFiles(data, imageScale)
+    files.forEach((file) => {
+      const url = URL.createObjectURL(file)
       const link = document.createElement('a')
       link.href = url
-      link.download = `فاتورة-${data.invoiceNumber}-${data.exportDate}-صفحة-${pageIndex + 1}.png`
+      link.download = file.name
       document.body.append(link)
       link.click()
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    }
+    })
     showToast(imageScale === 2 ? 'تم تصدير الفاتورة كصورة فائقة.' : 'تم تصدير الفاتورة كصورة.')
     return true
   } catch (error) {
@@ -2763,6 +2765,34 @@ async function exportInvoiceImage(
   } finally {
     button.disabled = false
   }
+}
+
+async function renderInvoiceImageFiles(data: InvoiceExportData, imageScale: 1 | 2): Promise<File[]> {
+  const canvases = await renderInvoiceCanvases(data, imageScale)
+  return Promise.all(canvases.map((canvas, pageIndex) => new Promise<File>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Could not create invoice image'))
+        return
+      }
+      resolve(new File([blob], `فاتورة-${data.invoiceNumber}-${data.exportDate}-صفحة-${pageIndex + 1}.png`, {
+        type: 'image/png',
+      }))
+    }, 'image/png')
+  })))
+}
+
+function downloadInvoiceImageFiles(files: File[]) {
+  files.forEach((file) => {
+    const url = URL.createObjectURL(file)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  })
 }
 
 async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExportData) {
@@ -3698,6 +3728,22 @@ function openInvoiceCustomerExportDialog(
           <textarea id="invoice-export-note" aria-label="ملاحظة اختيارية للفاتورة" maxlength="300" rows="3" placeholder="أدخل ملاحظة اختيارية لتظهر في أسفل الفاتورة">${escapeHtml(data.exportNote || '')}</textarea>
         </fieldset>` : ''}
       </div>
+      ${isExportOnly ? `
+      <fieldset class="invoice-share-panel">
+        <legend>مشاركة الفاتورة</legend>
+        <div class="invoice-share-actions">
+          <button type="button" class="secondary-button" data-invoice-share-native>مشاركة الصورة</button>
+          <button type="button" class="secondary-button" data-invoice-share-customer${data.customerPhone.trim() ? '' : ' disabled'}>فتح WhatsApp للزبون المسجل</button>
+          <div class="invoice-share-manual">
+            <label for="invoice-share-phone">أو أدخل رقم هاتف يدويًا
+              <input id="invoice-share-phone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="مثال: 09xxxxxxxx">
+            </label>
+            <button type="button" class="secondary-button" data-invoice-share-manual>فتح المحادثة</button>
+          </div>
+        </div>
+        <p class="invoice-share-hint">مشاركة الصورة تفتح قائمة المشاركة لاختيار WhatsApp أو تطبيق آخر. عند فتح محادثة برقم، ستُنزل الصورة لإرفاقها يدويًا.</p>
+        <p class="invoice-share-status" data-invoice-share-status role="status" aria-live="polite"></p>
+      </fieldset>` : ''}
       ${allowDataEdit ? '<p class="invoice-customer-identity-warning" data-invoice-customer-warning role="alert" aria-live="polite" hidden></p>' : ''}
       <div class="invoice-inline-preview" data-invoice-inline-preview hidden>
         <div class="invoice-export-preview-wrap" data-invoice-inline-pages></div>
@@ -3727,6 +3773,11 @@ function openInvoiceCustomerExportDialog(
   const previewStatus = backdrop.querySelector<HTMLElement>('[data-invoice-inline-status]')!
   const previewButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-preview')!
   const confirmButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!
+  const nativeShareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share-native]')
+  const savedCustomerShareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share-customer]')
+  const manualShareButton = backdrop.querySelector<HTMLButtonElement>('[data-invoice-share-manual]')
+  const manualSharePhoneInput = backdrop.querySelector<HTMLInputElement>('#invoice-share-phone')
+  const shareStatus = backdrop.querySelector<HTMLElement>('[data-invoice-share-status]')
   const closeButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-close')!
   const cancelButton = backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!
   const formatInputs = [...backdrop.querySelectorAll<HTMLInputElement>('input[name="invoice-export-format"]')]
@@ -4056,11 +4107,16 @@ function openInvoiceCustomerExportDialog(
       percentageInput,
       amountInput,
       exportNoteInput,
+      nativeShareButton,
+      savedCustomerShareButton,
+      manualShareButton,
+      manualSharePhoneInput,
       ...formatInputs,
       ...modeButtons,
     ].filter((control): control is HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement => Boolean(control)).forEach((control) => {
       control.disabled = disabled
     })
+    if (savedCustomerShareButton) savedCustomerShareButton.disabled = disabled || !data.customerPhone.trim()
     if (phoneInput) phoneInput.disabled = disabled || Boolean(selectedCustomerId)
     if (addressInput) addressInput.disabled = disabled || Boolean(selectedCustomerId)
     if (neighborhoodInput) {
@@ -4130,6 +4186,102 @@ function openInvoiceCustomerExportDialog(
   responsibleTeacherInput?.addEventListener('input', invalidatePreview)
   formatInputs.forEach((input) => input.addEventListener('change', invalidatePreview))
   exportNoteInput?.addEventListener('input', invalidatePreview)
+  let sharingInvoice = false
+  const setSharingInvoice = (sharing: boolean) => {
+    sharingInvoice = sharing
+    ;[nativeShareButton, savedCustomerShareButton, manualShareButton].forEach((button) => {
+      if (button) button.disabled = sharing || (button === savedCustomerShareButton && !data.customerPhone.trim())
+    })
+    if (manualSharePhoneInput) manualSharePhoneInput.disabled = sharing
+  }
+  const getInvoiceShareFiles = async () => {
+    if (!syncExportData(true)) return null
+    try {
+      return await renderInvoiceImageFiles(data, 2)
+    } catch (error) {
+      console.error('Failed to prepare invoice images for sharing:', error)
+      if (shareStatus) shareStatus.textContent = 'تعذر تجهيز صور الفاتورة للمشاركة.'
+      showToast('تعذر تجهيز صور الفاتورة للمشاركة.')
+      return null
+    }
+  }
+  const openWhatsAppChat = async (phone: string) => {
+    if (sharingInvoice) return
+    const phoneNumber = normalizeWhatsAppPhone(phone)
+    if (!phoneNumber) {
+      showToast('أدخل رقم هاتف صحيحًا مع مفتاح الدولة أو رقمًا سوريًا محليًا.')
+      shareStatus?.replaceChildren()
+      manualSharePhoneInput?.focus()
+      return
+    }
+    if (!syncExportData(true)) return
+    const message = `مرحبًا، أرسل إليك فاتورة رقم ${data.invoiceNumber}.`
+    const link = document.createElement('a')
+    link.href = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    document.body.append(link)
+    link.click()
+    link.remove()
+    setSharingInvoice(true)
+    if (shareStatus) shareStatus.textContent = 'جارٍ تجهيز صورة الفاتورة لتنزيلها...'
+    try {
+      const files = await renderInvoiceImageFiles(data, 2)
+      downloadInvoiceImageFiles(files)
+      if (shareStatus) shareStatus.textContent = 'أُنزِلت الصورة. أرفقها في محادثة WhatsApp المفتوحة ثم أرسلها.'
+      showToast('أُنزِلت صورة الفاتورة. أرفقها في محادثة WhatsApp ثم أرسلها.')
+    } catch (error) {
+      console.error('Failed to prepare invoice image for WhatsApp:', error)
+      if (shareStatus) shareStatus.textContent = 'فُتحت المحادثة لكن تعذر تنزيل صورة الفاتورة.'
+      showToast('فُتحت المحادثة لكن تعذر تنزيل صورة الفاتورة.')
+    } finally {
+      setSharingInvoice(false)
+    }
+  }
+  nativeShareButton?.addEventListener('click', async () => {
+    if (sharingInvoice) return
+    setSharingInvoice(true)
+    if (shareStatus) shareStatus.textContent = 'جارٍ تجهيز صور الفاتورة للمشاركة...'
+    try {
+      const files = await getInvoiceShareFiles()
+      if (!files) return
+      const shareData: ShareData = {
+        files,
+        title: `فاتورة رقم ${data.invoiceNumber}`,
+        text: `فاتورة رقم ${data.invoiceNumber}`,
+      }
+      if (typeof navigator.share !== 'function' || (navigator.canShare && !navigator.canShare({ files }))) {
+        downloadInvoiceImageFiles(files)
+        if (shareStatus) shareStatus.textContent = 'المشاركة المباشرة غير مدعومة في هذا المتصفح. أُنزِلت الصور لإرفاقها يدويًا.'
+        showToast('المشاركة المباشرة غير مدعومة. أُنزِلت صور الفاتورة لإرفاقها يدويًا.')
+        return
+      }
+      await navigator.share(shareData)
+      if (shareStatus) shareStatus.textContent = 'اكتملت المشاركة من التطبيق الذي اخترته.'
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        if (shareStatus) shareStatus.textContent = 'أُلغيت المشاركة.'
+        return
+      }
+      console.error('Failed to share invoice image:', error)
+      if (shareStatus) shareStatus.textContent = 'تعذرت مشاركة الصورة. يمكنك فتح WhatsApp برقم أو تنزيل الصورة.'
+      showToast('تعذرت مشاركة صورة الفاتورة.')
+    } finally {
+      setSharingInvoice(false)
+    }
+  })
+  savedCustomerShareButton?.addEventListener('click', () => {
+    void openWhatsAppChat(data.customerPhone)
+  })
+  manualShareButton?.addEventListener('click', () => {
+    void openWhatsAppChat(manualSharePhoneInput?.value || '')
+  })
+  manualSharePhoneInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      manualShareButton?.click()
+    }
+  })
   updateCustomerIdentityWarning()
   previewButton.addEventListener('click', () => {
     if (!previewSection.hidden) {

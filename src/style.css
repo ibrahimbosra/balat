@@ -1499,6 +1499,62 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   gap: 8px;
   margin-top: 12px;
 }
+.invoice-share-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+.invoice-share-panel legend {
+  padding: 0 5px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+.invoice-share-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.invoice-share-actions > button,
+.invoice-share-manual > button {
+  min-width: 0;
+  min-height: 40px;
+  white-space: normal;
+}
+.invoice-share-manual {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: end;
+  gap: 8px;
+}
+.invoice-share-manual label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.invoice-share-manual input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.invoice-share-hint,
+.invoice-share-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.invoice-share-status:empty { display: none; }
+.invoice-share-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .invoice-customer-identity-warning {
   margin: 8px 0 0;
   border: 1px solid #e6a3a0;
@@ -2235,6 +2291,16 @@ body.dark-mode .invoice-customer-fields > label input:disabled {
 body.dark-mode .invoice-export-format,
 body.dark-mode .invoice-discount-options,
 body.dark-mode .invoice-export-note-field { border-color: #2b3b49; }
+body.dark-mode .invoice-share-panel { border-color: #2b3b49; }
+body.dark-mode .invoice-share-panel legend,
+body.dark-mode .invoice-share-manual label { color: #e6edf3; }
+body.dark-mode .invoice-share-manual input {
+  border-color: #2b3b49;
+  background: #111b24;
+  color: #e6edf3;
+}
+body.dark-mode .invoice-share-hint,
+body.dark-mode .invoice-share-status { color: #aab8c5; }
 body.dark-mode .invoice-export-format legend,
 body.dark-mode .invoice-discount-options legend,
 body.dark-mode .invoice-export-note-field legend,
@@ -2819,6 +2885,27 @@ body.dark-mode .invoice-status-badge.is-unpaid {
 .invoice-ledger-section { display: grid; gap: 10px; }
 .invoice-ledger-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .invoice-ledger-head strong { font-size: 15px; }
+.invoice-payment-count {
+  display: inline-grid;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  margin-inline-start: 5px;
+  place-items: center;
+  border: 1px solid #cfe7e2;
+  border-radius: 999px;
+  background: #e8f5f2;
+  color: #006e69;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1;
+  vertical-align: middle;
+}
+body.dark-mode .invoice-payment-count {
+  border-color: #28645e;
+  background: #193b3a;
+  color: #7de0d3;
+}
 .invoice-payment-records { display: grid; gap: 8px; }
 .invoice-payment-record { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-2, rgba(255,255,255,0.02)); }
 .invoice-payment-record-main { display: grid; gap: 2px; }
