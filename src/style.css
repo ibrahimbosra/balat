@@ -190,6 +190,7 @@ body.dark-mode .main-sections button { border-color: #2b3b49; background: #18232
 body.dark-mode .main-sections button.active { border-color: #3d7773; background: #193b3a; color: #7de0d3; }
 .search-box { display: flex; align-items: center; gap: 8px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: #82919d; padding: 0 12px; }
 .search-box input { min-width: 0; border: 0; padding: 11px 0; box-shadow: none; }
+.search-box input.invoice-search-input { font-size: 11px; }
 .icon-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); }
 .add-button { border-color: var(--teal); background: var(--teal); color: #fff; }
 .list-head .add-button { display: inline-flex; width: auto; min-width: 128px; height: 44px; align-items: center; justify-content: center; gap: 8px; margin-inline-end: 12px; border-radius: 12px; padding: 0 14px; box-shadow: 0 6px 14px rgba(0,125,121,.18); font-size: 13px; font-weight: 800; white-space: nowrap; transition: background .18s, box-shadow .18s, transform .18s; }
@@ -734,6 +735,15 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   font-size: 12px;
   text-align: right;
 }
+.invoice-notes-row {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.invoice-notes-label { color: var(--muted); }
 .invoice-field {
   display: grid;
   min-width: 0;
@@ -1167,11 +1177,14 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   box-shadow: 0 18px 55px #20304440;
 }
 .invoice-customer-export-header {
+  position: relative;
+  top: -34px;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px 12px;
-  margin: 0 35px 16px 0;
+  margin: 0 35px 8px 0;
+  pointer-events: none;
 }
 .invoice-customer-export-dialog h3 {
   margin: 0;
@@ -1505,7 +1518,8 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   filter: saturate(.55);
 }
 .invoice-export-format,
-.invoice-discount-options {
+.invoice-discount-options,
+.invoice-export-note-field {
   display: grid;
   align-content: start;
   gap: 7px;
@@ -1522,7 +1536,8 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   width: 100%;
 }
 .invoice-export-format legend,
-.invoice-discount-options legend {
+.invoice-discount-options legend,
+.invoice-export-note-field legend {
   padding: 0 4px;
   color: var(--ink);
   font-size: 11px;
@@ -2218,9 +2233,11 @@ body.dark-mode .invoice-customer-fields > label input:disabled {
   color: #aab8c5;
 }
 body.dark-mode .invoice-export-format,
-body.dark-mode .invoice-discount-options { border-color: #2b3b49; }
+body.dark-mode .invoice-discount-options,
+body.dark-mode .invoice-export-note-field { border-color: #2b3b49; }
 body.dark-mode .invoice-export-format legend,
 body.dark-mode .invoice-discount-options legend,
+body.dark-mode .invoice-export-note-field legend,
 body.dark-mode .invoice-export-format label { color: #e6edf3; }
 body.dark-mode .invoice-customer-export-close {
   background: #253441;
@@ -2291,6 +2308,13 @@ body.dark-mode .modal-actions .cancel-delete-confirm {
 body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
 
 @media (max-width: 599px) {
+  .modal-backdrop:has(.invoice-correction-modal) {
+    padding: 8px;
+  }
+  .modal-backdrop:has(.invoice-correction-modal) > .invoice-correction-modal {
+    width: 100%;
+    max-width: none;
+  }
   .invoice-history-modal.invoice-corrections-modal {
     height: calc(100dvh - 16px);
     min-height: calc(100dvh - 16px);
@@ -2410,11 +2434,11 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     font-size: 10px;
   }
   .invoice-export-controls {
-    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: 5px;
   }
-  .invoice-export-format { width: auto; }
-  .invoice-export-format label { gap: 4px; font-size: 10px; }
+  .invoice-export-format { width: max-content; }
+  .invoice-export-format label { gap: 6px; min-height: 24px; font-size: 12px; }
   .invoice-export-format input[type="radio"] { width: 16px; flex-basis: 16px; }
   .invoice-discount-option { grid-template-columns: minmax(0,1fr) 74px; gap: 3px; }
   .invoice-discount-option > button { font-size: 10px; }
@@ -2458,7 +2482,16 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     flex: initial;
   }
   .invoice-quantity-field > input { grid-area: quantity; }
-  .invoice-notes-field { grid-area: notes; }
+  .invoice-notes-row {
+    grid-area: notes;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+  .invoice-notes-field {
+    width: 100%;
+    min-width: 0;
+  }
   .invoice-line-total { grid-area: total; }
 }
 
@@ -2836,10 +2869,10 @@ body.dark-mode .invoice-status-badge.is-unpaid {
   .correction-change-diff { gap: 6px; }
 }
 
-.invoice-export-note-field { display: grid; gap: 6px; }
-.invoice-export-note-field span { color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+.invoice-export-note-field { width: 100%; }
 .invoice-export-note-field textarea { width: 100%; resize: vertical; min-height: 72px; }
 .invoice-export-readonly-note { margin: 8px 0 4px; }
+.invoice-export-readonly-note p { font-size: 12px; }
 
 /* Invoice summary cards */
 .invoice-summary-list { gap: 14px; }
@@ -2861,10 +2894,16 @@ body.dark-mode .invoice-status-badge.is-unpaid {
 }
 .invoice-summary-workshop {
   margin-inline: auto;
-  padding: 0 10px;
-  color: #006e69;
-  font-size: 13px;
-  font-weight: 800;
+  height: 23px;
+  min-height: 23px;
+  padding: 3px 10px;
+  border: 1px solid #9ecdc8;
+  border-radius: 999px;
+  background: #eef9f7;
+  color: #007d79;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  font-size: 11px;
+  font-weight: 700;
   line-height: 1.4;
   text-align: center;
 }
@@ -3081,7 +3120,12 @@ body.dark-mode .invoice-summary-card {
     linear-gradient(180deg, #18232d 0%, #152029 100%);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
 }
-body.dark-mode .invoice-summary-workshop { color: #a8eee6; }
+body.dark-mode .invoice-summary-workshop {
+  border-color: #3d7773;
+  background: #193b3a;
+  color: #a8eee6;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
 body.dark-mode .invoice-customer-label,
 body.dark-mode .invoice-metric-label,
 body.dark-mode .invoice-metric-value small,

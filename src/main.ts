@@ -498,8 +498,10 @@ function serviceUnitLabel(unit: ServiceUnit): string {
   return 'مجموعة'
 }
 
-function modal(content: string) {
-  document.querySelectorAll<HTMLDivElement>('.modal-backdrop').forEach((element) => element.remove())
+function modal(content: string, options: { preserveExisting?: boolean } = {}) {
+  if (!options.preserveExisting) {
+    document.querySelectorAll<HTMLDivElement>('.modal-backdrop').forEach((element) => element.remove())
+  }
   const backdrop = document.createElement('div')
   backdrop.className = 'modal-backdrop'
   backdrop.innerHTML = `<section class="modal">${content}</section>`
@@ -734,7 +736,20 @@ function renderInvoicesSection() {
   const roots = [...invoiceRecords]
     .filter((record) => record.rootId === record.id)
     .sort((a, b) => Number(b.rootInvoiceNumber || b.invoiceNumber) - Number(a.rootInvoiceNumber || a.invoiceNumber))
-    .filter((record) => [record.invoiceNumber, record.rootInvoiceNumber, record.customerName, record.customerPhone, record.workshopName].join(' ').toLocaleLowerCase('ar').includes(search))
+    .filter((record) => {
+      const versions = getInvoiceRootVersions(record.rootId)
+      const latest = versions[versions.length - 1] || record
+      return [
+        record.invoiceNumber,
+        record.rootInvoiceNumber,
+        latest.invoiceNumber,
+        latest.rootInvoiceNumber,
+        latest.customerName,
+        latest.customerPhone,
+        latest.workshopName,
+        latest.workshopName ? `ورشة ${latest.workshopName}` : '',
+      ].join(' ').toLocaleLowerCase('ar').includes(search)
+    })
   if (count) count.textContent = String(roots.length)
   const formatDisplayDateTime = (value: string) => {
     const trimmed = value.trim()
@@ -865,11 +880,12 @@ function renderActiveSection() {
   const addButton = document.querySelector<HTMLButtonElement>('#main-add')
   if (!head || !content) return
   if (search) {
+    search.classList.toggle('invoice-search-input', activeMainSection === 'invoices')
     search.placeholder = activeMainSection === 'services'
       ? 'ابحث عن خدمة...'
       : activeMainSection === 'customers'
         ? 'ابحث عن زبون...'
-        : 'ابحث برقم الفاتورة أو اسم الزبون...'
+        : 'ابحث برقم الفاتورة أو اسم الزبون أو اسم الورشة أو رقم الهاتف'
     search.value = ''
   }
   if (addButton) {
@@ -1301,7 +1317,7 @@ function renderInvoiceCorrectionLogDialog(rootId: string) {
           <strong>لا توجد تعديلات أو حركات مسجلة بعد</strong>
           <p>أي تغيير على الخدمات أو الخصم أو البيانات، أو أي إضافة/تعديل/حذف لدفعة، سيظهر هنا مع توضيح ما قبل وما بعد.</p>
         </div>`}
-    </section>`)
+    </section>`, { preserveExisting: true })
   const modalSection = element.querySelector<HTMLElement>('.modal')!
   modalSection.classList.add('invoice-history-modal', 'invoice-corrections-modal')
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
@@ -1408,11 +1424,9 @@ function renderInvoiceVersionsDialog(rootId: string) {
     renderInvoiceCorrectionLogDialog(rootId)
   })
   element.querySelector<HTMLButtonElement>('#invoice-history-export')!.addEventListener('click', () => {
-    element.remove()
     renderInvoiceExportSnapshotDialog(latest)
   })
   element.querySelector<HTMLButtonElement>('#invoice-history-correct')!.addEventListener('click', () => {
-    element.remove()
     renderExportDialog({ sourceRecord: latest, correction: true })
   })
 }
@@ -3613,9 +3627,10 @@ function openInvoiceCustomerExportDialog(
           </div>
         </fieldset>` : ''}
         ${isExportOnly ? `
-        <label class="invoice-export-note-field" for="invoice-export-note">ملاحظة اختيارية للفاتورة <span>(تُطبع في أسفلها)</span>
-          <textarea id="invoice-export-note" maxlength="300" rows="3" placeholder="أدخل ملاحظة اختيارية لتظهر في أسفل الفاتورة">${escapeHtml(data.exportNote || '')}</textarea>
-        </label>` : ''}
+        <fieldset class="invoice-export-note-field">
+          <legend>ملاحظة اختيارية للفاتورة</legend>
+          <textarea id="invoice-export-note" aria-label="ملاحظة اختيارية للفاتورة" maxlength="300" rows="3" placeholder="أدخل ملاحظة اختيارية لتظهر في أسفل الفاتورة">${escapeHtml(data.exportNote || '')}</textarea>
+        </fieldset>` : ''}
       </div>
       ${allowDataEdit ? '<p class="invoice-customer-identity-warning" data-invoice-customer-warning role="alert" aria-live="polite" hidden></p>' : ''}
       <div class="invoice-inline-preview" data-invoice-inline-preview hidden>
@@ -4289,7 +4304,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         <button class="secondary-button" id="export-excel" type="button">ملف Excel</button>
       </div>
     </div>
-    <div id="export-invoice-panel"></div>`)
+    <div id="export-invoice-panel"></div>`, { preserveExisting: Boolean(options?.correction) })
   if (options?.correction) {
     element.querySelector<HTMLElement>('.modal')!.classList.add('invoice-correction-modal')
   }
@@ -4360,7 +4375,10 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
                   <span>${cancelled ? 'استعادة' : 'إلغاء'}</span>
                 </button>
               </div>
-              <input class="invoice-notes-field" type="text" data-invoice-notes="${id}" value="${escapeHtml(notes)}" placeholder="أضف ملاحظة عن الخدمة" aria-label="ملاحظات الخدمة">
+              <label class="invoice-notes-row">
+                <span class="invoice-notes-label">ملاحظة</span>
+                <input class="invoice-notes-field" type="text" data-invoice-notes="${id}" value="${escapeHtml(notes)}" placeholder="أضف ملاحظة اختيارية عن الخدمة" aria-label="ملاحظات الخدمة">
+              </label>
               <div class="invoice-service-fields">
                 <div class="invoice-field invoice-quantity-field">
                   <span class="invoice-field-heading">
@@ -4833,6 +4851,12 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
                 element.remove()
                 activeMainSection = 'invoices'
                 renderActiveSection()
+                window.setTimeout(() => {
+                  document.querySelectorAll<HTMLDivElement>('.modal-backdrop').forEach((backdrop) => {
+                    if (backdrop.querySelector('.invoice-history-modal')) backdrop.remove()
+                  })
+                  renderInvoiceVersionsDialog(sourceRecord.rootId)
+                }, 200)
               }
               : undefined,
           })
