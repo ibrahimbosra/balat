@@ -1843,6 +1843,12 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     width: 100%;
     min-width: 0;
   }
+  .invoice-history-modal .invoice-versions-list {
+    position: relative;
+    left: -12px;
+    width: calc(100% + 12px);
+    padding-left: 12px;
+  }
   .modal:has(.settings-tabs) {
     width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
