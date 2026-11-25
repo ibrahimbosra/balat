@@ -885,7 +885,7 @@ function renderActiveSection() {
       ? 'ابحث عن خدمة...'
       : activeMainSection === 'customers'
         ? 'ابحث عن زبون...'
-        : 'ابحث برقم الفاتورة أو اسم الزبون أو اسم الورشة أو رقم الهاتف'
+        : 'ابحث برقم الفاتورة أو الزبون أو الورشة أو الهاتف'
     search.value = ''
   }
   if (addButton) {
