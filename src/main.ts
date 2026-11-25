@@ -4120,6 +4120,7 @@ function openInvoiceCustomerExportDialog(
         previewStatus.textContent = 'جارٍ حفظ تصحيح الفاتورة في السجل...'
         await saveExportedInvoiceRecord(ownerId, data, context?.editableItems || [], { sourceRecord: context?.sourceRecord, payments: context?.payments })
         closeDialog()
+        context?.onInvoiceSaved?.()
         showToast(linkedExistingCustomer
           ? 'تم حفظ التصحيح وربط الفاتورة بالزبون المسجل.'
           : 'تم حفظ تصحيح الفاتورة في السجل.')
@@ -4749,10 +4750,22 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         const sourceRecord = options?.sourceRecord
         const savePayments = options?.savePayments ?? (sourceRecord ? sourceRecord.payments.map((payment) => ({ ...payment })) : undefined)
         if (sourceRecord) {
+          const sourceCustomerName = normalizeCustomerText(sourceRecord.customerName)
+          const sourceCustomerPhone = normalizeCustomerPhone(sourceRecord.customerPhone)
+          const sourceCustomerAddress = normalizeCustomerText(sourceRecord.customerAddress)
+          const linkedCustomer = customers.find((customer) => customer.id === sourceRecord.customerId)
+          const matchingCustomers = sourceCustomerName
+            ? customers.filter((customer) =>
+              normalizeCustomerText(customer.name) === sourceCustomerName
+              && (!sourceCustomerPhone || normalizeCustomerPhone(customer.phone) === sourceCustomerPhone)
+              && (!sourceCustomerAddress || normalizeCustomerText(customer.address) === sourceCustomerAddress))
+            : []
+          const matchingCustomer = matchingCustomers.length === 1 ? matchingCustomers[0] : undefined
+          data.customerId = linkedCustomer?.id || matchingCustomer?.id || null
           data.customerName = sourceRecord.customerName
           data.customerPhone = sourceRecord.customerPhone
           data.customerAddress = sourceRecord.customerAddress
-          data.customerNeighborhood = customers.find((customer) => customer.id === sourceRecord.customerId)?.neighborhood || ''
+          data.customerNeighborhood = customers.find((customer) => customer.id === data.customerId)?.neighborhood || ''
           data.workshopName = sourceRecord.workshopName || ''
           data.responsibleTeacherName = sourceRecord.responsibleTeacherName
           data.discount = sourceRecord.discount ? { ...sourceRecord.discount } : null
@@ -4796,6 +4809,13 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
             editableItems,
             payments: savePayments,
             mode: options?.correction ? 'save-correction' : 'export-save',
+            onInvoiceSaved: options?.correction
+              ? () => {
+                element.remove()
+                activeMainSection = 'invoices'
+                renderActiveSection()
+              }
+              : undefined,
           })
           exportDialogOpening = false
           if (exportButton.isConnected) exportButton.disabled = false
