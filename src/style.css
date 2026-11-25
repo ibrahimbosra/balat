@@ -2530,27 +2530,18 @@ body.dark-mode .invoice-version-card.is-original {
 }
 
 .invoice-version-workshop {
-  min-width: 0;
   margin: 0;
-  border: 1px solid #b5d9d4;
-  border-radius: 10px;
-  background: #e8f5f2;
-  padding: 0 10px 5px;
-}
-.invoice-version-workshop legend {
-  margin-inline: auto;
-  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
   color: var(--teal);
   font-size: 13px;
   font-weight: 800;
   overflow-wrap: anywhere;
-  text-align: center;
 }
 body.dark-mode .invoice-version-workshop {
-  border-color: #3d7773;
-  background: #193b3a;
+  color: #a8eee6;
 }
-body.dark-mode .invoice-version-workshop legend { color: #a8eee6; }
 
 .invoice-payments-list {
   margin: 0;

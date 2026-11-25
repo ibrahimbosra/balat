@@ -1332,8 +1332,8 @@ function renderInvoiceVersionsDialog(rootId: string) {
             <strong>الفاتورة رقم ${escapeHtml(latest.invoiceNumber)}</strong>
             <button class="secondary-button invoice-corrections-log-button" type="button" id="invoice-corrections-log" title="سجل التعديلات والحركات">سجل الحركات</button>
           </div>
+          ${latest.workshopName?.trim() ? `<p class="invoice-version-workshop">ورشة ${escapeHtml(latest.workshopName.trim())}</p>` : ''}
           <p>${escapeHtml(latest.customerName || 'بدون اسم زبون')}${latest.customerPhone ? ` — ${escapeHtml(latest.customerPhone)}` : ''}${latest.customerAddress ? ` — ${escapeHtml(latest.customerAddress)}` : ''}</p>
-          ${latest.workshopName?.trim() ? `<fieldset class="invoice-version-workshop"><legend>ورشة ${escapeHtml(latest.workshopName.trim())}</legend></fieldset>` : ''}
           ${latest.responsibleTeacherName ? `<p>المعلم المسؤول: ${escapeHtml(latest.responsibleTeacherName)}</p>` : ''}
           <p>الإجمالي: ${money(latest.total)} دولار${latest.discount ? ` | الخصم: ${money(latest.discount.amount)} دولار` : ''} | الصافي: ${money(net)} دولار</p>
           <p>المدفوع: ${money(paymentsTotal)} دولار | المتبقي: ${money(remaining)} دولار</p>
