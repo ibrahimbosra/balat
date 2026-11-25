@@ -2487,12 +2487,14 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
       context.textAlign = 'center'
       context.fillStyle = '#ffffff'
       context.font = '700 12px "Cairo", sans-serif'
+      context.textBaseline = 'middle'
       context.fillText(
         'إجمالي مساحة الأعمال المنفذة للورشة:',
         width / 2,
-        quantitySectionY + 17,
+        quantitySectionY + quantityTitleHeight / 2,
         tableRight - tableLeft - 12,
       )
+      context.textBaseline = 'alphabetic'
       const quantityCellY = quantitySectionY + quantityTitleHeight
       context.fillStyle = '#f3f9f8'
       context.fillRect(tableLeft, quantityCellY, tableRight - tableLeft, quantityCellHeight)
@@ -2519,7 +2521,9 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
       context.textAlign = 'center'
       context.fillStyle = '#006e69'
       context.font = '700 12px "Cairo", sans-serif'
-      context.fillText('حساب إجمالي الفاتورة', width / 2, financialTitleY + 15)
+      context.textBaseline = 'middle'
+      context.fillText('حساب إجمالي الفاتورة', width / 2, financialTitleY + financialTitleHeight / 2)
+      context.textBaseline = 'alphabetic'
       const moneySummaryY = financialTitleY + financialTitleHeight + (hasPaymentsSection ? 2 : 4)
       const discount = data.discount
       const hasDiscount = Boolean(discount?.amount)
