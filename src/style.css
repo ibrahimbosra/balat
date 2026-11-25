@@ -709,6 +709,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   height: 30px;
   flex: 0 0 30px;
   place-items: center;
+  padding: 0;
   border: 1px solid #f0caca;
   border-radius: 9px;
   background: #fff4f3;
@@ -720,12 +721,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   border-color: #df9b9b;
   background: #fde7e5;
 }
-.invoice-remove-service span {
-  margin-top: -2px;
-  font-size: 23px;
-  font-weight: 500;
-  line-height: 1;
-}
+.invoice-remove-service svg { width: 16px; height: 16px; }
 .invoice-service-fields {
   display: grid;
   grid-template-columns: repeat(2,minmax(0,1fr));
@@ -2426,6 +2422,14 @@ body.dark-mode .modal-actions .cancel-delete-confirm {
 body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
 
 @media (max-width: 599px) {
+  .modal-backdrop:has(.export-tabs),
+  .modal-backdrop:has(.services-export-modal) {
+    padding: 8px;
+  }
+  .modal-backdrop:has(.export-tabs) > .modal,
+  .modal-backdrop:has(.services-export-modal) > .services-export-modal {
+    width: 100%;
+  }
   .modal-backdrop:has(.invoice-correction-modal) {
     padding: 8px;
   }
@@ -2485,7 +2489,7 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     height: calc(100% - 112px);
   }
   .modal:has(.export-tabs) {
-    width: calc(100vw - 16px);
+    width: 100%;
     height: calc(100dvh - 16px);
     max-height: calc(100dvh - 16px);
     border-radius: 18px;
@@ -2510,7 +2514,7 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   .export-preview-fields { grid-template-columns: 1fr; }
   .export-preview-wrap { height: 52vh; }
   .services-export-modal {
-    width: calc(100vw - 16px);
+    width: 100%;
     height: calc(100dvh - 16px);
     max-height: calc(100dvh - 16px);
     gap: 7px;
@@ -2987,13 +2991,6 @@ body.dark-mode .invoice-payment-count {
 .invoice-payment-record-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .invoice-payment-record-actions .secondary-button,
 .invoice-payment-record-actions .danger-button { min-height: 36px; padding: 6px 12px; }
-.invoice-service-item.is-cancelled { opacity: 0.72; border-color: var(--border-soft); }
-.invoice-service-item.is-cancelled .service-item-header strong,
-.invoice-service-item.is-cancelled .service-item-header span { text-decoration: line-through; }
-.invoice-cancel-service { background: transparent; border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: 10px; padding: 6px 10px; cursor: pointer; }
-.invoice-cancel-service:hover { color: var(--text-primary); border-color: var(--border-strong, var(--border-soft)); }
-.invoice-cancel-service.is-cancelled { color: var(--primary, #4f7cff); }
-
 /* Correction log timeline */
 .invoice-corrections-timeline { display: grid; gap: 12px; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px 2px 8px; align-content: start; }
 .correction-entry { border: 1px solid var(--border-soft); border-radius: 14px; padding: 14px; background: var(--surface-2, rgba(255,255,255,0.02)); display: grid; gap: 10px; }

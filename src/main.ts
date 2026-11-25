@@ -94,7 +94,6 @@ type StoredInvoiceItem = {
   unit: string
   unitPrice: number
   total: number
-  cancelled?: boolean
 }
 
 type InvoiceUnitTotal = {
@@ -123,7 +122,6 @@ type StoredInvoiceEditableItem = {
   unit: string
   unitCode: ServiceUnit | null
   currencyCode: string
-  cancelled?: boolean
 }
 
 type InvoiceRecord = {
@@ -399,7 +397,10 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
   const rootInvoiceNumber = typeof data.rootInvoiceNumber === 'string' && data.rootInvoiceNumber.trim()
     ? normalizeInvoiceNumber(data.rootInvoiceNumber)
     : invoiceNumber
-  const rows = Array.isArray(data.rows) ? data.rows.map((row) => {
+  // Ignore entries from the former soft-cancel flow so they cannot reappear in edits or exports.
+  const rows = Array.isArray(data.rows) ? data.rows.filter((row) =>
+    !(row && typeof row === 'object' && (row as Record<string, unknown>).cancelled === true),
+  ).map((row) => {
     const item = row && typeof row === 'object' ? row as Record<string, unknown> : {}
     const quantity = typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 0
     const unitPrice = typeof item.unitPrice === 'number' && Number.isFinite(item.unitPrice) ? item.unitPrice : 0
@@ -411,7 +412,6 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
       unit: typeof item.unit === 'string' ? item.unit : '',
       unitPrice,
       total,
-      cancelled: item.cancelled === true,
     }
   }) : []
   const unitTotals = Array.isArray(data.unitTotals) ? data.unitTotals.map((entry) => {
@@ -422,7 +422,9 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
       amount: typeof item.amount === 'number' && Number.isFinite(item.amount) ? item.amount : null,
     }
   }) : []
-  const items: StoredInvoiceEditableItem[] = Array.isArray(data.items) ? data.items.map((entry) => {
+  const items: StoredInvoiceEditableItem[] = Array.isArray(data.items) ? data.items.filter((entry) =>
+    !(entry && typeof entry === 'object' && (entry as Record<string, unknown>).cancelled === true),
+  ).map((entry) => {
     const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {}
     const unitCode: ServiceUnit | null = item.unitCode === 'CBM' || item.unitCode === 'PCS' || item.unitCode === 'LOT' || item.unitCode === 'PROJECT' || item.unitCode === 'GROUP' || item.unitCode === 'LM' || item.unitCode === 'SQM'
       ? item.unitCode
@@ -437,7 +439,6 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
       unit: typeof item.unit === 'string' ? item.unit : '',
       unitCode,
       currencyCode: typeof item.currencyCode === 'string' && item.currencyCode.trim() ? item.currencyCode.trim() : 'USD',
-      cancelled: item.cancelled === true,
     }
   }) : []
   const discount: StoredInvoiceDiscount = data.discount && typeof data.discount === 'object'
@@ -1764,7 +1765,6 @@ type InvoiceExportRow = {
   unit: string
   unitPrice: number
   total: number
-  cancelled?: boolean
 }
 
 type InvoiceDiscount = {
@@ -2276,7 +2276,7 @@ async function exportServicesToImage(
   }
 }
 
-function openServicesExportDialog(rows: ExportServiceRow[]) {
+function openServicesExportDialog(rows: ExportServiceRow[], previousWindow: HTMLDivElement) {
   if (!rows.length) {
     showToast('لا توجد خدمات محددة للتصدير.')
     return
@@ -2308,16 +2308,25 @@ function openServicesExportDialog(rows: ExportServiceRow[]) {
     <div class="services-export-preview">
       <p class="services-export-preview-status" aria-live="polite">جارٍ إعداد المعاينة...</p>
       <div class="export-preview-wrap">
-      <img id="export-preview-image" alt="معاينة قائمة أسعار الخدمات">
+        <img id="export-preview-image" alt="معاينة قائمة أسعار الخدمات">
       </div>
     </div>
     <div class="services-export-actions">
-      <button class="secondary-button" id="cancel-services-export" type="button">إلغاء</button>
+      <button class="secondary-button" id="cancel-services-export" type="button">العودة للخدمات</button>
       <button class="primary-button" id="confirm-services-export" type="button">تصدير</button>
     </div>
-  `)
+  `, { preserveExisting: true })
   element.querySelector<HTMLElement>('.modal')!.classList.add('services-export-modal')
-  element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
+  const closeDialog = () => {
+    element.remove()
+    previousWindow.hidden = false
+  }
+  element.addEventListener('click', (event) => {
+    if (event.target !== element) return
+    event.stopImmediatePropagation()
+    closeDialog()
+  }, true)
+  element.querySelector('.modal-close')!.addEventListener('click', closeDialog)
   const nameInput = element.querySelector<HTMLInputElement>('#export-customer-name')!
   const phoneInput = element.querySelector<HTMLInputElement>('#export-customer-phone')!
   const addressInput = element.querySelector<HTMLInputElement>('#export-customer-address')!
@@ -2357,7 +2366,7 @@ function openServicesExportDialog(rows: ExportServiceRow[]) {
       void refreshPreview()
     }, 180)
   }
-  element.querySelector('#cancel-services-export')!.addEventListener('click', () => element.remove())
+  element.querySelector('#cancel-services-export')!.addEventListener('click', closeDialog)
   ;[nameInput, phoneInput, addressInput, noteInput].forEach((input) =>
     input.addEventListener('input', schedulePreview))
   confirmButton.addEventListener('click', async () => {
@@ -2375,7 +2384,7 @@ function openServicesExportDialog(rows: ExportServiceRow[]) {
         rows,
         details,
       )
-    if (successful === true) element.remove()
+    if (successful === true) closeDialog()
   })
   void refreshPreview()
 }
@@ -2512,7 +2521,6 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
       columns.forEach((column) => {
         const left = right - column.width
         context.strokeRect(left, y, column.width, rowHeight)
-        const isCancelled = row?.cancelled === true
         const value = column.key === 'number'
           ? row ? String(pageRowOffset + rowIndex + 1) : ''
           : !row
@@ -2527,8 +2535,8 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
                     ? invoiceQuantity(row.quantity)
                     : column.key === 'unitPrice'
                       ? money(row.unitPrice)
-                      : (isCancelled ? 'ملغاة' : `${money(row.total)} دولار`)
-        context.fillStyle = isCancelled ? '#8a97a3' : '#203044'
+                      : `${money(row.total)} دولار`
+        context.fillStyle = '#203044'
         const isTextColumn = column.key === 'name' || column.key === 'notes'
         context.textAlign = isTextColumn ? 'right' : 'center'
         const maxWidth = column.width - (isTextColumn ? 14 : 8)
@@ -2556,14 +2564,6 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
           context.fillText(line, textX, firstBaseline + lineIndex * lineHeight, maxWidth))
         right = left
       })
-      if (row?.cancelled) {
-        context.strokeStyle = '#9aa7b2'
-        context.lineWidth = 1.5
-        context.beginPath()
-        context.moveTo(tableLeft + 6, y + rowHeight / 2)
-        context.lineTo(tableRight - 6, y + rowHeight / 2)
-        context.stroke()
-      }
     }
 
     if (pageIndex === pageCount - 1) {
@@ -3010,7 +3010,6 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     )
     let serviceRowIndex = 0
     let pageSlotOffset = 0
-    const slotRows: Array<InvoiceExportRow | undefined> = []
     pageRowCounts.forEach((pageRows, pageIndex) => {
       const pageCapacity = pageIndex === pageRowCounts.length - 1
         ? invoiceFinalPageCapacity
@@ -3019,7 +3018,6 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
         const row = rowIndex < pageRows ? data.rows[serviceRowIndex] : undefined
         const number = row ? serviceRowIndex + 1 : ''
         if (row) serviceRowIndex += 1
-        slotRows.push(row)
         worksheet.addRow(row
           ? [
             number,
@@ -3027,7 +3025,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
             row.unit,
             row.quantity,
             row.unitPrice,
-            row.cancelled ? 'ملغاة' : row.total,
+            row.total,
             ...(hasNotes ? [row.notes] : []),
           ]
           : [number, ...Array.from({ length: tableColumnCount - 1 }, () => '')])
@@ -3041,13 +3039,10 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     worksheet.views = [{ state: 'frozen', ySplit: headerRowNumber, rightToLeft: true, showGridLines: false }]
     for (let rowNumber = headerRowNumber; rowNumber <= dataEndRow; rowNumber += 1) {
       const row = worksheet.getRow(rowNumber)
-      const slotRow = rowNumber > headerRowNumber ? slotRows[rowNumber - headerRowNumber - 1] : undefined
-      const isCancelled = slotRow?.cancelled === true
       let rowLineCount = 1
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         const isNumericCell = rowNumber !== headerRowNumber
           && [1, 4, 5, 6].includes(colNumber)
-          && !(isCancelled && colNumber === 6)
         const cellText = String(cell.value ?? '')
         rowLineCount = Math.max(rowLineCount, wrappedLineCount(cellText, columnWidth(colNumber)))
         cell.alignment = {
@@ -3056,17 +3051,13 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           wrapText: true,
           readingOrder: isNumericCell && colNumber !== 6 ? 'ltr' : 'rtl',
         }
-        const textColor = rowNumber === headerRowNumber ? 'FFFFFFFF' : (isCancelled ? 'FF8A97A3' : 'FF203044')
         cell.font = {
           name: 'Arial',
           size: rowNumber === headerRowNumber ? 11 : 10,
           bold: rowNumber === headerRowNumber,
-          color: { argb: textColor },
-          strike: isCancelled && rowNumber !== headerRowNumber && colNumber !== 1 && colNumber !== 6,
+          color: { argb: rowNumber === headerRowNumber ? 'FFFFFFFF' : 'FF203044' },
         }
-        if (isCancelled && rowNumber !== headerRowNumber && colNumber === 6) {
-          cell.numFmt = '@'
-        } else if (rowNumber !== headerRowNumber && typeof cell.value === 'number') {
+        if (rowNumber !== headerRowNumber && typeof cell.value === 'number') {
           cell.numFmt = colNumber === 6
             ? currencyNumberFormat(cell.value)
             : colNumber === 4
@@ -3495,7 +3486,7 @@ function getInvoicePaymentStatus(record: InvoiceRecord): { key: 'paid' | 'partia
 }
 
 function getInvoiceRecordEditableItems(record: InvoiceRecord): StoredInvoiceEditableItem[] {
-  if (record.items.length) return record.items.map((item) => ({ ...item, cancelled: item.cancelled === true }))
+  if (record.items.length) return record.items.map((item) => ({ ...item }))
   return record.rows.map((row) => ({
     custom: true,
     name: row.name,
@@ -3505,7 +3496,6 @@ function getInvoiceRecordEditableItems(record: InvoiceRecord): StoredInvoiceEdit
     unit: row.unit,
     unitCode: null as ServiceUnit | null,
     currencyCode: 'USD',
-    cancelled: row.cancelled === true,
   }))
 }
 
@@ -3629,10 +3619,9 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
     if ((prev.quantity || '').trim() !== (curr.quantity || '').trim()) itemChanges.push(`الكمية: ${(prev.quantity || '').trim() || '—'} ← ${(curr.quantity || '').trim() || '—'}`)
     if ((prev.price || '').trim() !== (curr.price || '').trim()) itemChanges.push(`السعر: ${(prev.price || '').trim() || '—'} ← ${(curr.price || '').trim() || '—'} دولار`)
     if ((prev.notes || '').trim() !== (curr.notes || '').trim()) itemChanges.push(`الملاحظات: ${(prev.notes || '').trim() || '—'} ← ${(curr.notes || '').trim() || '—'}`)
-    if (Boolean(prev.cancelled) !== Boolean(curr.cancelled)) itemChanges.push(curr.cancelled ? 'تم إلغاء الخدمة (لن تُحتسب ضمن الإجمالي)' : 'تمت استعادة الخدمة')
     if (itemChanges.length) {
       changes.push({ label: name, text: itemChanges.join(' • ') })
-      tags.add(Boolean(prev.cancelled) !== Boolean(curr.cancelled) ? 'إلغاء/استعادة' : 'خدمات')
+      tags.add('خدمات')
     }
   }
   for (const [id, { item: curr, index }] of currItemsById) {
@@ -3641,7 +3630,7 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
     const price = curr.price?.trim() ? `${money(Number(curr.price))} دولار` : '—'
     changes.push({
       label: 'إضافة خدمة',
-      text: `${(curr.name || '').trim() || `خدمة #${index + 1}`} (${qty} ${curr.unit || ''} × ${price})${curr.cancelled ? ' — مُلغاة' : ''}`.trim(),
+      text: `${(curr.name || '').trim() || `خدمة #${index + 1}`} (${qty} ${curr.unit || ''} × ${price})`.trim(),
     })
     tags.add('خدمات')
   }
@@ -3686,7 +3675,7 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
 
   const tagList = [...tags]
   let summary = 'تحديث على الفاتورة'
-  const hasBase = tagList.some((tag) => ['خصم', 'خدمات', 'إلغاء/استعادة', 'بيانات', 'مبالغ'].includes(tag)) && (invoiceTermsSignature(previous) !== invoiceTermsSignature(current))
+  const hasBase = tagList.some((tag) => ['خصم', 'خدمات', 'بيانات', 'مبالغ'].includes(tag)) && (invoiceTermsSignature(previous) !== invoiceTermsSignature(current))
   const hasPayments = tagList.includes('دفعات') && paymentsSignature(previous) !== paymentsSignature(current)
   if (hasBase && hasPayments) summary = 'تعديل الفاتورة وحركة دفعة'
   else if (hasPayments && !hasBase) {
@@ -3696,7 +3685,6 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
   } else if (tagList.length === 1) {
     summary = tagList[0] === 'خصم' ? 'تعديل الخصم'
       : tagList[0] === 'خدمات' ? 'تعديل الخدمات'
-      : tagList[0] === 'إلغاء/استعادة' ? 'إلغاء/استعادة خدمة'
       : tagList[0] === 'بيانات' ? 'تعديل بيانات الفاتورة'
       : tagList[0] === 'دفعات' ? 'حركة دفعة'
       : 'تعديل مبالغ الفاتورة'
@@ -3899,7 +3887,7 @@ function openInvoiceCustomerExportDialog(
         </label>
       </div>`}
       <div class="invoice-export-summary">
-        <div class="invoice-export-count-card"><span>عدد الخدمات</span><strong>${data.rows.filter((row) => !row.cancelled).length}</strong></div>
+        <div class="invoice-export-count-card"><span>عدد الخدمات</span><strong>${data.rows.length}</strong></div>
         <div class="invoice-export-total-card"><span data-invoice-total-label>إجمالي الفاتورة</span><strong data-invoice-total-before>${formatAmount(data.total)}</strong></div>
         <div class="invoice-export-discount-card" hidden><span data-invoice-discount-label>قيمة الخصم</span><strong data-invoice-discount-total>${formatAmount(0)}</strong></div>
         <div class="invoice-export-final-card" hidden><span>الإجمالي بعد الخصم</span><strong data-invoice-total-after>${formatAmount(data.total)}</strong></div>
@@ -4664,7 +4652,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     unit: string
     unitCode: ServiceUnit | null
     currencyCode: string
-    cancelled: boolean
   }
   const invoiceItems: InvoiceItem[] = []
   let nextInvoiceItemId = 1
@@ -4680,7 +4667,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         unit: row.unit,
         unitCode: null as ServiceUnit | null,
         currencyCode: 'USD',
-        cancelled: row.cancelled === true,
       }))
     sourceItems.forEach((item, index) => {
       const itemId = getInvoiceEditableItemId(item, index)
@@ -4695,7 +4681,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         unit: item.unit,
         unitCode: item.unitCode,
         currencyCode: item.currencyCode || 'USD',
-        cancelled: item.cancelled === true,
       })
     })
   }
@@ -4706,15 +4691,15 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     invoicePanel.innerHTML = `
       <div class="invoice-workspace">
         <div class="invoice-items">
-          ${invoiceItems.map(({ id, custom, name, notes, quantity, price, unit, currencyCode, cancelled }, index) => `
-            <article class="invoice-service-card${cancelled ? ' is-cancelled' : ''}" data-invoice-item="${id}">
+          ${invoiceItems.map(({ id, custom, name, notes, quantity, price, unit, currencyCode }, index) => `
+            <article class="invoice-service-card" data-invoice-item="${id}">
               <span class="service-order invoice-card-order" aria-label="ترتيب الخدمة ${index + 1} في الفاتورة">${index + 1}</span>
               <div class="invoice-card-header">
                 ${custom
                   ? `<input class="invoice-custom-name" type="text" data-invoice-name="${id}" maxlength="50" value="${escapeHtml(name)}" aria-label="اسم الخدمة غير المسجلة" placeholder="اسم الخدمة">`
                   : `<h3>${escapeHtml(name)}</h3>`}
-                <button class="invoice-cancel-service${cancelled ? ' is-cancelled' : ''}" type="button" data-invoice-cancel="${id}" aria-label="${cancelled ? 'استعادة' : 'إلغاء'} ${escapeHtml(name || 'الخدمة')}" title="${cancelled ? 'استعادة الخدمة' : 'إلغاء الخدمة'}">
-                  <span>${cancelled ? 'استعادة' : 'إلغاء'}</span>
+                <button class="invoice-remove-service" type="button" data-invoice-remove="${id}" aria-label="حذف ${escapeHtml(name || 'الخدمة')}" title="حذف الخدمة">
+                  ${svg('trash')}
                 </button>
               </div>
               <label class="invoice-notes-row">
@@ -4743,7 +4728,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
               </div>
               <div class="invoice-line-total">
                 <strong data-invoice-total>—</strong>
-                <small data-invoice-calculation>${cancelled ? 'خدمة مُلغاة (غير محتسبة في الإجمالي)' : 'أدخل الكمية والسعر لحساب الإجمالي'}</small>
+                <small data-invoice-calculation>أدخل الكمية والسعر لحساب الإجمالي</small>
               </div>
             </article>
           `).join('')}
@@ -4819,7 +4804,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
   }
   const updateInvoiceTotals = () => {
     const totals = new Map<string, number>()
-    invoiceItems.forEach(({ id, name, unit, quantity, price, currencyCode, cancelled }) => {
+    invoiceItems.forEach(({ id, name, unit, quantity, price, currencyCode }) => {
       const card = invoicePanel.querySelector<HTMLElement>(`[data-invoice-item="${id}"]`)
       const totalElement = card?.querySelector<HTMLElement>('[data-invoice-total]')
       const calculationElement = card?.querySelector<HTMLElement>('[data-invoice-calculation]')
@@ -4838,17 +4823,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         && Number.isFinite(numericPrice)
         && numericPrice >= 0
         && Number.isFinite(lineTotal)
-      card?.classList.toggle('is-incomplete', !cancelled && !isComplete)
-      if (cancelled) {
-        if (Number.isFinite(numericQuantity) && Number.isFinite(numericPrice) && numericQuantity! >= 0 && numericPrice! >= 0) {
-          if (totalElement) totalElement.textContent = `ملغاة (${money(lineTotal)} ${invoiceCurrencyName(currencyCode)})`
-          if (calculationElement) calculationElement.textContent = 'خدمة مُلغاة — غير محتسبة في الإجمالي'
-        } else {
-          if (totalElement) totalElement.textContent = 'ملغاة'
-          if (calculationElement) calculationElement.textContent = 'خدمة مُلغاة — غير محتسبة في الإجمالي'
-        }
-        return
-      }
+      card?.classList.toggle('is-incomplete', !isComplete)
       if (numericQuantity === null) {
         if (totalElement) totalElement.textContent = '—'
         if (calculationElement) {
@@ -4892,7 +4867,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     const unitTotals = invoicePanel.querySelector<HTMLUListElement>('[data-invoice-unit-totals]')
     if (unitTotals) {
       const displayedQuantities = aggregateInvoiceQuantities(invoiceItems
-        .filter((item) => !item.cancelled)
         .map((item) => ({
           unit: item.unit,
           quantity: item.quantity.trim() ? Number(item.quantity) : Number.NaN,
@@ -4911,7 +4885,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       return null
     }
     const rows: InvoiceExportRow[] = []
-    const activeRows: InvoiceExportRow[] = []
     let invoiceTotal = 0
     for (const item of invoiceItems) {
       const name = item.name.trim()
@@ -4931,18 +4904,12 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         showToast('يجب ألا تتجاوز ملاحظة الخدمة 35 حرفًا.')
         return null
       }
-      if (item.cancelled) {
-        const quantity = Number.isFinite(Number(quantityText)) ? Number(quantityText) : 0
-        const unitPrice = Number.isFinite(Number(priceText)) ? Number(priceText) : 0
-        rows.push({ name, notes, quantity, unit, unitPrice, total: 0, cancelled: true })
-        continue
-      }
       if (!name || !unit) {
-        showToast('أكمل اسم الخدمة ووحدة القياس في جميع البطاقات غير المُلغاة.')
+        showToast('أكمل اسم الخدمة ووحدة القياس في جميع الخدمات.')
         return null
       }
       if (!quantityText || !priceText) {
-        showToast('أكمل الكمية وسعر الوحدة في جميع البطاقات غير المُلغاة.')
+        showToast('أكمل الكمية وسعر الوحدة في جميع الخدمات.')
         return null
       }
       const quantity = Number(quantityText)
@@ -4956,20 +4923,15 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         showToast('إجمالي الفاتورة يتجاوز القيمة التي يمكن حسابها.')
         return null
       }
-      const row: InvoiceExportRow = { name, notes, quantity, unit, unitPrice, total: lineTotal, cancelled: false }
+      const row: InvoiceExportRow = { name, notes, quantity, unit, unitPrice, total: lineTotal }
       rows.push(row)
-      activeRows.push(row)
       invoiceTotal += lineTotal
-    }
-    if (!activeRows.length) {
-      showToast('لا يمكن حفظ/تصدير فاتورة بدون خدمات فعّالة. ألغِ حالة الإلغاء عن خدمة واحدة على الأقل.')
-      return null
     }
     const now = new Date()
     const exportDate = formatInvoiceDateTime(now)
     return {
       rows,
-      unitTotals: aggregateInvoiceQuantities(activeRows.map(({ unit, quantity, total }) => ({
+      unitTotals: aggregateInvoiceQuantities(rows.map(({ unit, quantity, total }) => ({
         unit,
         quantity,
         amount: total,
@@ -5172,7 +5134,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           data.upfrontPaymentDate = data.exportDate
           data.payments = []
         }
-        const editableItems = invoiceItems.map(({ id, custom, name, notes, quantity, price, unit, unitCode, currencyCode, cancelled }) => ({
+        const editableItems = invoiceItems.map(({ id, custom, name, notes, quantity, price, unit, unitCode, currencyCode }) => ({
           id,
           custom,
           name,
@@ -5182,7 +5144,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           unit,
           unitCode,
           currencyCode,
-          cancelled: cancelled === true,
         }))
         if (sourceRecord) {
           const paidTotal = getInvoicePaidTotal(sourceRecord)
@@ -5242,13 +5203,12 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       }
       return
     }
-    const cancelButton = event.target.closest<HTMLButtonElement>('[data-invoice-cancel]')
-    if (cancelButton) {
-      const itemId = Number(cancelButton.dataset.invoiceCancel)
+    const removeButton = event.target.closest<HTMLButtonElement>('[data-invoice-remove]')
+    if (removeButton) {
+      const itemId = Number(removeButton.dataset.invoiceRemove)
       const itemIndex = invoiceItems.findIndex((line) => line.id === itemId)
       if (itemIndex < 0) return
-      if (options?.correction) invoiceItems.splice(itemIndex, 1)
-      else invoiceItems[itemIndex].cancelled = !invoiceItems[itemIndex].cancelled
+      invoiceItems.splice(itemIndex, 1)
       renderInvoice()
       return
     }
@@ -5264,7 +5224,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         unit: '',
         unitCode: null,
         currencyCode: 'USD',
-        cancelled: false,
       })
       renderInvoice()
       return
@@ -5289,7 +5248,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         unit: serviceUnitLabel(service.unit),
         unitCode: service.unit,
         currencyCode: 'USD',
-        cancelled: false,
       })
       renderInvoice()
       return
@@ -5353,8 +5311,8 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       showToast('اختر خدمة واحدة على الأقل قبل متابعة التجهيز.')
       return
     }
-    element.remove()
-    openServicesExportDialog(rows)
+    element.hidden = true
+    openServicesExportDialog(rows, element)
   })
 }
 
