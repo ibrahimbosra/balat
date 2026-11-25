@@ -2589,14 +2589,22 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
         if (exportPayments.length === 1) {
           const payment = exportPayments[0]
           const paymentCellHeight = 44
-          const paymentCellWidth = totalWidth / 2
+          const paymentCellWidth = totalWidth / 3
           const paymentCells = [
             {
-              left: tableLeft + paymentCellWidth,
+              left: tableLeft + paymentCellWidth * 2,
               label: 'الدفعة',
               value: `${money(payment.amount)} دولار`,
               sublabel: payment.date ? `تاريخ الدفعة: ${payment.date}` : '',
               fill: '#f3f9f8',
+              settled: false,
+            },
+            {
+              left: tableLeft + paymentCellWidth,
+              label: 'إجمالي الدفعات',
+              value: `${money(paidTotal)} دولار`,
+              sublabel: '',
+              fill: '#e8f5f2',
               settled: false,
             },
             {
@@ -2642,6 +2650,15 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
               labelColor: '#006e69',
               settled: false,
             })),
+            {
+              label: 'إجمالي الدفعات',
+              value: `${money(paidTotal)} دولار`,
+              sublabel: '',
+              fill: '#e8f5f2',
+              valueColor: '#203044',
+              labelColor: '#006e69',
+              settled: false,
+            },
             {
               label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
               value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
@@ -3075,6 +3092,16 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           sublabelColor: 'FF667782',
           settled: false,
         })),
+        {
+          label: 'إجمالي الدفعات',
+          value: `${money(paidTotal)} دولار`,
+          sublabel: '',
+          fill: 'FFE8F5F2',
+          labelColor: 'FF006E69',
+          valueColor: 'FF203044',
+          sublabelColor: 'FF667782',
+          settled: false,
+        },
         {
           label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
           value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
