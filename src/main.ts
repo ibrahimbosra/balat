@@ -345,11 +345,11 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
       note: typeof item.note === 'string' ? item.note : '',
       createdAt: typeof item.createdAt === 'string' ? item.createdAt : '',
     }
-  }).filter((payment) => payment.amount > 0 || payment.date || payment.note) : []
+  }).filter((payment) => payment.amount > 0) : []
   if (!payments.length) {
     const upfrontAmount = typeof data.upfrontPayment === 'number' && Number.isFinite(data.upfrontPayment) ? data.upfrontPayment : 0
     const upfrontDate = typeof data.upfrontPaymentDate === 'string' ? data.upfrontPaymentDate : ''
-    if (upfrontAmount > 0 || upfrontDate) payments = [{ amount: upfrontAmount, date: upfrontDate, note: '', createdAt: '' }]
+    if (upfrontAmount > 0) payments = [{ amount: upfrontAmount, date: upfrontDate, note: '', createdAt: '' }]
   }
   return {
     id,
@@ -2230,7 +2230,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
         ? data.payments
         : (data.upfrontPayment !== null && data.upfrontPayment > 0
           ? [{ amount: data.upfrontPayment, date: data.upfrontPaymentDate || '', note: '', createdAt: '' }]
-          : [])).filter((payment) => payment.amount > 0 || payment.date || payment.note)
+          : [])).filter((payment) => payment.amount > 0)
       const hasPaymentsSection = exportPayments.length > 0
       const quantitySectionY = tableBottomY + (hasPaymentsSection ? 4 : 12)
       const quantityTitleHeight = hasPaymentsSection ? 20 : 24
@@ -2778,7 +2778,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       ? data.payments
       : (data.upfrontPayment !== null && data.upfrontPayment > 0
         ? [{ amount: data.upfrontPayment, date: data.upfrontPaymentDate || '', note: '', createdAt: '' }]
-        : [])).filter((payment) => payment.amount > 0 || payment.date || payment.note)
+        : [])).filter((payment) => payment.amount > 0)
     if (exportPayments.length) {
       worksheet.mergeCells(`A${summaryRowNumber}:${lastColumn}${summaryRowNumber}`)
       const paymentsTitleRow = worksheet.getRow(summaryRowNumber)
@@ -3167,20 +3167,9 @@ async function saveExportedInvoiceRecord(
   const now = nowDate.toISOString()
   const exportDate = formatInvoiceDateTime(nowDate)
   data.exportDate = exportDate
-  let payments: InvoicePayment[]
-  if (context?.payments) {
-    payments = context.payments.map((payment) => ({ ...payment }))
-  } else {
-    payments = []
-    if ((data.upfrontPayment !== null && data.upfrontPayment > 0) || data.upfrontPaymentDate) {
-      payments.push({
-        amount: data.upfrontPayment ?? 0,
-        date: data.upfrontPaymentDate || '',
-        note: '',
-        createdAt: now,
-      })
-    }
-  }
+  const payments = context?.payments
+    ? context.payments.map((payment) => ({ ...payment }))
+    : []
   const invoicesCollection = collection(db, 'users', ownerId, 'invoices')
   const sourceRecord = context?.sourceRecord
   if (sourceRecord) {
@@ -3259,14 +3248,6 @@ function openInvoiceCustomerExportDialog(
   const allowDataEdit = !isExportOnly
   const showFormat = isExportOnly
   const formatAmount = (value: number) => `${money(value)} دولار`
-  if (!data.upfrontPaymentDate) {
-    const today = new Date()
-    data.upfrontPaymentDate = [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, '0'),
-      String(today.getDate()).padStart(2, '0'),
-    ].join('-')
-  }
   const fixedInvoiceNumber = context?.sourceRecord
     ? (context.sourceRecord.rootInvoiceNumber || context.sourceRecord.invoiceNumber)
     : null
@@ -3301,13 +3282,6 @@ function openInvoiceCustomerExportDialog(
         <label for="invoice-responsible-teacher-name">اسم المعلم المسؤول <span>(اختياري)</span>
           <input id="invoice-responsible-teacher-name" type="text" maxlength="80" placeholder="اسم المعلم المسؤول">
         </label>
-        ${!context?.payments ? `
-        <label for="invoice-upfront-payment">دفعة مقدمة <span>(اختياري)</span>
-          <input id="invoice-upfront-payment" type="number" min="0.01" max="${data.total}" step="0.01" inputmode="decimal" placeholder="المبلغ">
-        </label>
-        <label for="invoice-upfront-payment-date">تاريخ الدفعة
-          <input id="invoice-upfront-payment-date" type="date" value="${escapeHtml(data.upfrontPaymentDate)}">
-        </label>` : ''}
       </div>`}
       <div class="invoice-export-summary">
         <div class="invoice-export-count-card"><span>عدد الخدمات</span><strong>${data.rows.filter((row) => !row.cancelled).length}</strong></div>
@@ -3355,8 +3329,6 @@ function openInvoiceCustomerExportDialog(
   const phoneInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-phone')
   const addressInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-address')
   const responsibleTeacherInput = backdrop.querySelector<HTMLInputElement>('#invoice-responsible-teacher-name')
-  const upfrontPaymentInput = backdrop.querySelector<HTMLInputElement>('#invoice-upfront-payment')
-  const upfrontPaymentDateInput = backdrop.querySelector<HTMLInputElement>('#invoice-upfront-payment-date')
   const percentageInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-percentage')
   const amountInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-amount')
   const exportNoteInput = backdrop.querySelector<HTMLTextAreaElement>('#invoice-export-note')
@@ -3388,8 +3360,6 @@ function openInvoiceCustomerExportDialog(
   if (phoneInput) phoneInput.value = data.customerPhone || ''
   if (addressInput) addressInput.value = data.customerAddress || ''
   if (responsibleTeacherInput) responsibleTeacherInput.value = data.responsibleTeacherName || ''
-  if (upfrontPaymentInput) upfrontPaymentInput.value = data.upfrontPayment !== null ? String(data.upfrontPayment) : ''
-  if (upfrontPaymentDateInput) upfrontPaymentDateInput.value = data.upfrontPaymentDate || ''
   if (exportNoteInput) exportNoteInput.value = data.exportNote || ''
   formatInputs.forEach((input) => { input.checked = input.value === data.exportFormat })
   if (allowDataEdit && data.discount) {
@@ -3420,13 +3390,6 @@ function openInvoiceCustomerExportDialog(
     if (percentageInput) percentageInput.disabled = activeDiscountMode !== 'percentage'
     if (amountInput) amountInput.disabled = activeDiscountMode !== 'amount'
     const netTotal = data.total - (discount?.amount || 0)
-    if (upfrontPaymentInput) {
-      upfrontPaymentInput.max = String(netTotal)
-      const upfrontPayment = Number(upfrontPaymentInput.value)
-      if (upfrontPaymentInput.value && Number.isFinite(upfrontPayment) && upfrontPayment > netTotal) {
-        upfrontPaymentInput.value = String(netTotal)
-      }
-    }
     totalLabel.textContent = discount ? 'الإجمالي قبل الخصم' : 'إجمالي الفاتورة'
     summary.classList.toggle('has-discount', Boolean(discount))
     discountCard.hidden = !discount
@@ -3461,18 +3424,6 @@ function openInvoiceCustomerExportDialog(
         return false
       }
     }
-    const upfrontPaymentValue = upfrontPaymentInput?.value.trim() || ''
-    const upfrontPayment = Number(upfrontPaymentValue)
-    if (allowDataEdit && !carriedPayments) {
-      if (upfrontPaymentValue && (!Number.isFinite(upfrontPayment) || upfrontPayment < 0 || upfrontPayment > netTotal)) {
-        if (notifyInvalid) showToast('يجب ألا تتجاوز الدفعة المقدمة صافي إجمالي الفاتورة.')
-        return false
-      }
-      if (upfrontPayment > 0 && !upfrontPaymentDateInput?.value) {
-        if (notifyInvalid) showToast('أدخل تاريخ الدفعة المقدمة.')
-        return false
-      }
-    }
     if (allowDataEdit) {
       data.customerName = nameInput?.value.trim() || ''
       data.customerPhone = phoneInput?.value.trim() || ''
@@ -3486,13 +3437,9 @@ function openInvoiceCustomerExportDialog(
         data.upfrontPayment = lastPayment ? lastPayment.amount : (paidTotal > 0 ? paidTotal : null)
         data.upfrontPaymentDate = lastPayment?.date || data.upfrontPaymentDate
       } else {
-        data.upfrontPayment = upfrontPaymentValue && upfrontPayment > 0 ? upfrontPayment : null
-        data.upfrontPaymentDate = upfrontPaymentDateInput?.value || data.upfrontPaymentDate
-        if (!data.payments || data.payments.length <= 1) {
-          data.payments = data.upfrontPayment !== null && data.upfrontPayment > 0
-            ? [{ amount: data.upfrontPayment, date: data.upfrontPaymentDate || '', note: '', createdAt: '' }]
-            : []
-        }
+        data.upfrontPayment = null
+        data.upfrontPaymentDate = ''
+        data.payments = []
       }
     }
     if (showFormat) {
@@ -3566,8 +3513,6 @@ function openInvoiceCustomerExportDialog(
       phoneInput,
       addressInput,
       responsibleTeacherInput,
-      upfrontPaymentInput,
-      upfrontPaymentDateInput,
       percentageInput,
       amountInput,
       exportNoteInput,
@@ -3604,15 +3549,6 @@ function openInvoiceCustomerExportDialog(
     renderDiscountSummary()
     invalidatePreview()
   })
-  if (upfrontPaymentInput) {
-    upfrontPaymentInput.addEventListener('input', () => {
-      const value = Number(upfrontPaymentInput.value)
-      const netTotal = data.total - (getActiveDiscount()?.amount || 0)
-      if (Number.isFinite(value) && value > netTotal) upfrontPaymentInput.value = String(netTotal)
-      invalidatePreview()
-    })
-  }
-  upfrontPaymentDateInput?.addEventListener('input', invalidatePreview)
   ;[nameInput, phoneInput, addressInput, responsibleTeacherInput].forEach((input) =>
     input?.addEventListener('input', invalidatePreview))
   formatInputs.forEach((input) => input.addEventListener('change', invalidatePreview))
@@ -4107,11 +4043,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     }
     const now = new Date()
     const exportDate = formatInvoiceDateTime(now)
-    const exportDateOnly = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-')
     return {
       rows,
       unitTotals: aggregateInvoiceQuantities(activeRows.map(({ unit, quantity, total }) => ({
@@ -4129,7 +4060,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       customerAddress: '',
       responsibleTeacherName: '',
       upfrontPayment: null,
-      upfrontPaymentDate: exportDateOnly,
+      upfrontPaymentDate: '',
       exportNote: '',
     }
   }
