@@ -345,9 +345,9 @@ function findCustomerIdentityMatch(
 
   if (!nameKey) return null
   const exactIdentityMatches = sameName.filter((customer) =>
-    normalizeCustomerPhone(customer.phone) === phoneKey
-    && normalizeCustomerText(customer.address) === addressKey
-    && normalizeCustomerText(customer.neighborhood) === neighborhoodKey)
+    (!phoneKey || normalizeCustomerPhone(customer.phone) === phoneKey)
+    && (!addressKey || normalizeCustomerText(customer.address) === addressKey)
+    && (!neighborhoodKey || normalizeCustomerText(customer.neighborhood) === neighborhoodKey))
   if (exactIdentityMatches.length > 1) {
     return { kind: 'duplicate-identity-multiple', name: sameName[0].name }
   }
@@ -365,8 +365,8 @@ function customerIdentityMessage(match: CustomerIdentityMatch, context: 'invoice
   }
   if (match.kind === 'duplicate-identity') {
     return context === 'invoice'
-      ? `بيانات الزبون ${match.customer.name} مطابقة لسجل مسجل. اختره من السهم، أو غيّر رقم الهاتف أو العنوان أو الحي.`
-      : `الزبون ${match.customer.name} مسجل بهذه البيانات. غيّر رقم الهاتف أو العنوان أو الحي لتمييزه.`
+      ? `اسم الزبون ${match.customer.name} مسجل بالفعل. أدخل رقم هاتف أو عنوانًا أو حيًا مختلفًا، أو اختر الزبون المسجل من السهم.`
+      : `اسم الزبون ${match.customer.name} مسجل بالفعل. لا يمكن الحفظ حتى تُدخل رقم هاتف أو عنوانًا أو حيًا يختلف عن بياناته.`
   }
   if (match.kind === 'phone-conflict') {
     return context === 'invoice'
@@ -1849,11 +1849,13 @@ function customerDetailsSegments(details: {
   customerName?: string
   customerPhone?: string
   customerAddress?: string
+  customerNeighborhood?: string
 }) {
   const segments: Array<{ text: string; red: boolean }> = []
   const customerName = details.customerName?.trim()
   const customerPhone = details.customerPhone?.trim()
   const customerAddress = details.customerAddress?.trim()
+  const customerNeighborhood = details.customerNeighborhood?.trim()
   if (customerName) {
     segments.push(
       { text: 'مقدمة إلى السيد ', red: false },
@@ -1873,6 +1875,13 @@ function customerDetailsSegments(details: {
     segments.push(
       { text: 'العنوان: ', red: false },
       { text: customerAddress, red: true },
+    )
+  }
+  if (customerNeighborhood) {
+    if (segments.length) segments.push({ text: ' | ', red: false })
+    segments.push(
+      { text: 'الحي: ', red: false },
+      { text: customerNeighborhood, red: true },
     )
   }
   return segments
@@ -1906,7 +1915,7 @@ function drawDetailSegments(
   context.direction = 'rtl'
   context.textAlign = 'right'
   segments.forEach((segment) => {
-    context.fillStyle = segment.red ? '#c96a6a' : '#718096'
+    context.fillStyle = segment.red ? '#c62828' : '#000000'
     context.fillText(segment.text, detailX, y)
     detailX -= context.measureText(segment.text).width
   })
@@ -1917,7 +1926,7 @@ function drawCustomerDetails(
   context: CanvasRenderingContext2D,
   width: number,
   y: number,
-  details: { customerName?: string; customerPhone?: string; customerAddress?: string },
+  details: { customerName?: string; customerPhone?: string; customerAddress?: string; customerNeighborhood?: string },
 ) {
   drawDetailSegments(context, width, y, customerDetailsSegments(details))
 }
@@ -2314,18 +2323,23 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
     context.fillText('فاتورة حساب للأعمال المنفذة', width / 2, 108)
     const customerSegments = customerDetailsSegments(data)
     const teacherSegments = responsibleTeacherSegments(data.responsibleTeacherName)
-    drawDetailSegments(context, width, 138, customerSegments)
-    const teacherY = customerSegments.length ? 156 : 138
+    const customerY = 138
+    drawDetailSegments(context, width, customerY, customerSegments)
+    const teacherY = customerSegments.length ? customerY + 24 : customerY
     drawDetailSegments(context, width, teacherY, teacherSegments)
     context.textAlign = 'left'
     context.fillStyle = '#a64b37'
     context.font = '700 13px "Cairo", sans-serif'
     context.fillText(`رقم الفاتورة: ${data.invoiceNumber}`, tableLeft, 55)
-    context.textAlign = 'center'
-    context.fillStyle = '#667782'
-    context.font = '600 13px "Cairo", sans-serif'
-    const dateY = teacherSegments.length ? Math.max(164, teacherY + 18) : 164
-    context.fillText(`تاريخ الإصدار: ${data.exportDate}`, width / 2, dateY)
+    const dateY = teacherSegments.length
+      ? teacherY + 24
+      : customerSegments.length
+        ? customerY + 26
+        : 164
+    drawDetailSegments(context, width, dateY, [
+      { text: 'تاريخ الإصدار: ', red: false },
+      { text: formatInvoicePrintDateTime(data.exportDate), red: true },
+    ])
     context.textAlign = 'center'
     context.fillStyle = '#a64b37'
     context.font = '600 13px "Cairo", sans-serif'
@@ -2344,7 +2358,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
       const left = right - column.width
       context.fillStyle = '#007d79'
       context.fillRect(left, headerY, column.width, headerHeight)
-      context.strokeStyle = '#d6e0e1'
+      context.strokeStyle = '#000000'
       context.lineWidth = 1
       context.strokeRect(left, headerY, column.width, headerHeight)
       context.fillStyle = '#ffffff'
@@ -2359,7 +2373,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
       const y = tableTop + headerHeight + rowIndex * rowHeight
       context.fillStyle = rowIndex % 2 === 0 ? '#f3f9f8' : '#f6f8fb'
       context.fillRect(tableLeft, y, tableRight - tableLeft, rowHeight)
-      context.strokeStyle = '#d6e0e1'
+      context.strokeStyle = '#000000'
       context.lineWidth = 1
       context.strokeRect(tableLeft, y, tableRight - tableLeft, rowHeight)
       let right = tableRight
@@ -2440,7 +2454,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
       context.fillStyle = '#ffffff'
       context.font = '700 12px "Cairo", sans-serif'
       context.fillText(
-        'إجمالي كميات الأعمال المنفذة للورشة:',
+        'إجمالي مساحة الأعمال المنفذة للورشة:',
         width / 2,
         quantitySectionY + 17,
         tableRight - tableLeft - 12,
@@ -2640,7 +2654,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: 1 | 2)
     context.fillStyle = '#667782'
     context.font = '600 11px "Cairo", sans-serif'
     context.fillText(
-      `الكردي لأعمال البلاط والسيراميك والرخام  •  صفحة ${pageIndex + 1} من ${pageCount}`,
+      `صفحة ${pageIndex + 1} من ${pageCount}`,
       width / 2,
       exportNote && isLastPage ? 1158 : 1144,
     )
@@ -2729,11 +2743,11 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       cell.value = {
         richText: customerSegments.map(({ text, red }) => ({
           text,
-          font: { name: 'Arial', color: { argb: red ? 'FFC96A6A' : 'FF718096' } },
+          font: { name: 'Arial', color: { argb: red ? 'FFC62828' : 'FF000000' } },
         })),
       }
       cell.alignment = { horizontal: 'right', vertical: 'middle' }
-      worksheet.getRow(metadataRowNumber).height = 24
+      worksheet.getRow(metadataRowNumber).height = 28
       metadataRowNumber += 1
     }
     const teacherSegments = responsibleTeacherSegments(data.responsibleTeacherName)
@@ -2743,16 +2757,21 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
       cell.value = {
         richText: teacherSegments.map(({ text, red }) => ({
           text,
-          font: { name: 'Arial', color: { argb: red ? 'FFC96A6A' : 'FF718096' } },
+          font: { name: 'Arial', color: { argb: red ? 'FFC62828' : 'FF000000' } },
         })),
       }
       cell.alignment = { horizontal: 'right', vertical: 'middle' }
-      worksheet.getRow(metadataRowNumber).height = 24
+      worksheet.getRow(metadataRowNumber).height = 28
       metadataRowNumber += 1
     }
     worksheet.mergeCells(`A${metadataRowNumber}:${lastColumn}${metadataRowNumber}`)
-    worksheet.getCell(`A${metadataRowNumber}`).value = `تاريخ الإصدار: ${data.exportDate}`
-    worksheet.getRow(metadataRowNumber).height = 23
+    worksheet.getCell(`A${metadataRowNumber}`).value = {
+      richText: [
+        { text: 'تاريخ الإصدار: ', font: { name: 'Arial', color: { argb: 'FF000000' } } },
+        { text: formatInvoicePrintDateTime(data.exportDate), font: { name: 'Arial', color: { argb: 'FFC62828' } } },
+      ],
+    }
+    worksheet.getRow(metadataRowNumber).height = 27
     const headerRowNumber = metadataRowNumber + 1
     worksheet.pageSetup.printTitlesRow = `${headerRowNumber}:${headerRowNumber}`
     const headerRow = worksheet.getRow(headerRowNumber)
@@ -2830,10 +2849,10 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
           fgColor: { argb: rowNumber === headerRowNumber ? 'FF007D79' : rowNumber % 2 === 0 ? 'FFF3F9F8' : 'FFFFFFFF' },
         }
         cell.border = {
-          top: { style: 'thin', color: { argb: 'FFC6A253' } },
-          bottom: { style: 'thin', color: { argb: 'FFC6A253' } },
-          left: { style: 'thin', color: { argb: 'FFC6A253' } },
-          right: { style: 'thin', color: { argb: 'FFC6A253' } },
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } },
         }
       })
     }
@@ -2926,7 +2945,7 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     }
     worksheet.mergeCells(`A${summaryRowNumber}:${lastColumn}${summaryRowNumber}`)
     const quantityTitleRow = worksheet.getRow(summaryRowNumber)
-    quantityTitleRow.getCell(1).value = 'إجمالي كميات الأعمال المنفذة للورشة:'
+    quantityTitleRow.getCell(1).value = 'إجمالي مساحة الأعمال المنفذة للورشة:'
     quantityTitleRow.height = 25
     quantityTitleRow.eachCell({ includeEmpty: true }, (cell) => {
       cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
@@ -3080,13 +3099,8 @@ async function exportInvoiceToExcel(button: HTMLButtonElement, data: InvoiceExpo
     worksheet.getCell(`A${noticeRowNumber}`).font = { name: 'Arial', size: 10, color: { argb: 'FFA64B37' } }
     worksheet.getCell(`A${noticeRowNumber}`).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
     worksheet.getRow(noticeRowNumber).height = 30
-    const companyFooterRowNumber = noticeRowNumber + 1
-    worksheet.mergeCells(`A${companyFooterRowNumber}:${lastColumn}${companyFooterRowNumber}`)
-    worksheet.getCell(`A${companyFooterRowNumber}`).value = 'الكردي لأعمال البلاط والسيراميك والرخام'
-    worksheet.getCell(`A${companyFooterRowNumber}`).font = { name: 'Arial', size: 10, color: { argb: 'FF667782' } }
-    worksheet.getCell(`A${companyFooterRowNumber}`).alignment = { horizontal: 'center', vertical: 'middle' }
-    worksheet.getRow(companyFooterRowNumber).height = 24
-    worksheet.pageSetup.printArea = `A1:${lastColumn}${companyFooterRowNumber}`
+    worksheet.headerFooter.oddFooter = '&Cصفحة &P من &N'
+    worksheet.pageSetup.printArea = `A1:${lastColumn}${noticeRowNumber}`
 
     const buffer = await workbook.xlsx.writeBuffer()
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -3116,6 +3130,21 @@ function formatInvoiceDateTime(date = new Date()): string {
   const hh = String(date.getHours()).padStart(2, '0')
   const mm = String(date.getMinutes()).padStart(2, '0')
   return `${y}-${m}-${d} ${hh}:${mm}`
+}
+
+function formatInvoicePrintDateTime(value: string): string {
+  const parts = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/)
+  const date = parts
+    ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), Number(parts[4]), Number(parts[5]))
+    : new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const weekdays = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${weekdays[date.getDay()]} ${day}-${month}-${date.getFullYear()} | الساعة ${hour}:${minute}`
 }
 
 function getInvoiceRootVersions(rootId: string): InvoiceRecord[] {
