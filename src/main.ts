@@ -3403,11 +3403,18 @@ function openInvoiceCustomerExportDialog(
   let confirmingExport = false
   let committedInvoiceNumber: string | null = fixedInvoiceNumber
   let selectedCustomerId = data.customerId
+  let selectedCustomerName = selectedCustomerId
+    ? data.customerName.trim() || customers.find((customer) => customer.id === selectedCustomerId)?.name || ''
+    : ''
   let closeCustomerPicker: ((restoreFocus?: boolean) => void) | null = null
 
   if (nameInput) nameInput.value = data.customerName || ''
   if (phoneInput) phoneInput.value = data.customerPhone || ''
   if (addressInput) addressInput.value = data.customerAddress || ''
+  if (selectedCustomerId) {
+    if (phoneInput) phoneInput.disabled = true
+    if (addressInput) addressInput.disabled = true
+  }
   if (responsibleTeacherInput) responsibleTeacherInput.value = data.responsibleTeacherName || ''
   if (exportNoteInput) exportNoteInput.value = data.exportNote || ''
   formatInputs.forEach((input) => { input.checked = input.value === data.exportFormat })
@@ -3575,10 +3582,13 @@ function openInvoiceCustomerExportDialog(
       const customer = customers.find((item) => item.id === option?.dataset.customerId)
       if (!customer || !nameInput || !phoneInput || !addressInput) return
       selectedCustomerId = customer.id
+      selectedCustomerName = customer.name
       data.customerId = customer.id
       nameInput.value = customer.name
       phoneInput.value = customer.phone
       addressInput.value = customer.address
+      phoneInput.disabled = true
+      addressInput.disabled = true
       invalidatePreview()
       closePicker()
     })
@@ -3643,6 +3653,8 @@ function openInvoiceCustomerExportDialog(
     ].filter((control): control is HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement => Boolean(control)).forEach((control) => {
       control.disabled = disabled
     })
+    if (phoneInput) phoneInput.disabled = disabled || Boolean(selectedCustomerId)
+    if (addressInput) addressInput.disabled = disabled || Boolean(selectedCustomerId)
     if (!disabled) renderDiscountSummary()
   }
   modeButtons.forEach((modeButton) => {
@@ -3672,9 +3684,18 @@ function openInvoiceCustomerExportDialog(
     invalidatePreview()
   })
   nameInput?.addEventListener('input', () => {
-    const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId)
-    if (selectedCustomer && nameInput.value.trim() !== selectedCustomer.name.trim()) {
+    if (selectedCustomerId && nameInput.value.trim() !== selectedCustomerName) {
       selectedCustomerId = null
+      selectedCustomerName = ''
+      data.customerId = null
+      if (phoneInput) {
+        phoneInput.value = ''
+        phoneInput.disabled = false
+      }
+      if (addressInput) {
+        addressInput.value = ''
+        addressInput.disabled = false
+      }
     }
     invalidatePreview()
   })

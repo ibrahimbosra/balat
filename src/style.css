@@ -1149,6 +1149,13 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .invoice-customer-fields input::placeholder {
   font-size: 10px;
 }
+.invoice-customer-fields > label input:disabled {
+  border-color: #d7e0e2;
+  background: #edf2f3;
+  color: #78868c;
+  cursor: not-allowed;
+  opacity: 1;
+}
 .invoice-customer-picker-backdrop {
   position: fixed;
   inset: 0;
@@ -1990,6 +1997,11 @@ body.dark-mode .invoice-customer-fields input:not([type="radio"]):not([type="che
   border-color: #2b3b49;
   background: #111b24;
   color: #e6edf3;
+}
+body.dark-mode .invoice-customer-fields > label input:disabled {
+  border-color: #2b3b49;
+  background: #202d37;
+  color: #aab8c5;
 }
 body.dark-mode .invoice-export-format,
 body.dark-mode .invoice-discount-options { border-color: #2b3b49; }
