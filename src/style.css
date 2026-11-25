@@ -359,7 +359,7 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 }
 .customer-phone {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   direction: ltr;
   text-align: right;
