@@ -700,6 +700,7 @@ function renderCustomersSection() {
         return `
           <article class="service-row customer-row">
             ${paymentStatus ? `<span class="invoice-status-badge is-${paymentStatus.key}" aria-label="حالة الفواتير: ${paymentStatus.label}">${paymentStatus.label}</span>` : ''}
+            <button class="customer-account-button" type="button" data-account-customer="${customer.id}" aria-label="فتح كشف حساب ${escapeHtml(customer.name)}">كشف حساب</button>
             <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
             <button class="service-main customer-main" type="button" data-edit-customer="${customer.id}">
               <span class="customer-identity-line">
@@ -737,6 +738,962 @@ function renderCustomersSection() {
       if (customer) renderCustomerEditor(customer)
     })
   })
+  content.querySelectorAll<HTMLButtonElement>('[data-account-customer]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const customer = customers.find((item) => item.id === button.dataset.accountCustomer)
+      if (customer) renderCustomerAccountStatement(customer)
+    })
+  })
+}
+
+function getCustomerInvoiceRecords(customer: Customer): InvoiceRecord[] {
+  return invoiceRecords
+    .filter((record) => record.rootId === record.id)
+    .map((root) => getInvoiceRootVersions(root.rootId).at(-1) || root)
+    .filter((latest) => {
+      const linked = latest.customerId === customer.id
+      const nameMatches = normalizeCustomerText(latest.customerName) === normalizeCustomerText(customer.name)
+      const phoneMatches = latest.customerPhone.trim()
+        && normalizeCustomerPhone(latest.customerPhone) === normalizeCustomerPhone(customer.phone)
+      return linked || (nameMatches && (!customer.phone || phoneMatches))
+    })
+    .sort((a, b) => Number(b.rootInvoiceNumber || b.invoiceNumber) - Number(a.rootInvoiceNumber || a.invoiceNumber))
+}
+
+function renderCustomerAccountStatement(customer: Customer) {
+  const linkedInvoices = getCustomerInvoiceRecords(customer)
+  const total = linkedInvoices.reduce((sum, record) => sum + getInvoiceNetTotal(record), 0)
+  const paid = linkedInvoices.reduce((sum, record) => sum + getInvoicePaidTotal(record), 0)
+  const remaining = linkedInvoices.reduce((sum, record) => sum + getInvoiceRemainingTotal(record), 0)
+  const allPayments = linkedInvoices
+    .flatMap((record) => record.payments.map((payment) => ({
+      ...payment,
+      invoiceNumber: record.rootInvoiceNumber || record.invoiceNumber,
+    })))
+  .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || '').localeCompare(b.createdAt || ''))
+
+  const backdrop = modal(`
+    <div class="account-statement-modal">
+      <button type="button" class="modal-close" data-close-account aria-label="إغلاق">${svg('close')}</button>
+      <p class="eyebrow">كشف حساب زبون</p>
+      <h2>${escapeHtml(customer.name)}</h2>
+      <div class="account-statement-contact">
+        ${customer.phone ? `<span class="account-contact-phone">${escapeHtml(customer.phone)}</span>` : ''}
+        ${customer.address ? `<span>${escapeHtml(customer.address)}</span>` : ''}
+        ${customer.neighborhood ? `<span>${escapeHtml(customer.neighborhood)}</span>` : ''}
+      </div>
+      ${customer.notes ? `<p class="account-statement-notes">${escapeHtml(customer.notes)}</p>` : ''}
+      <div class="account-statement-summary">
+        <div><span>إجمالي الفواتير</span><strong>${money(total)} <small>دولار</small></strong></div>
+        <div class="is-paid"><span>إجمالي المسدد</span><strong>${money(paid)} <small>دولار</small></strong></div>
+        <div class="${remaining <= 0.00001 ? 'is-clear' : 'is-due'}"><span>الرصيد المتبقي</span><strong>${money(remaining)} <small>دولار</small></strong></div>
+      </div>
+
+      <section class="account-statement-section">
+        <div class="account-statement-section-head">
+          <h3>سجل الدفعات</h3>
+          <span>${allPayments.length} دفعة</span>
+        </div>
+        ${allPayments.length ? `
+          <div class="account-payment-timeline">
+            ${allPayments.map((payment, paymentIndex) => `
+              <article class="account-payment-item">
+                <span class="account-payment-dot" aria-hidden="true"></span>
+                <div class="account-payment-main">
+                  <strong>${paymentIndex + 1}. ${money(payment.amount)} دولار</strong>
+                  ${payment.note ? `<p>${escapeHtml(payment.note)}</p>` : ''}
+                </div>
+                <div class="account-payment-meta">
+                  <span>${escapeHtml(payment.date || 'بدون تاريخ')}</span>
+                  <span>فاتورة ${escapeHtml(payment.invoiceNumber)}</span>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        ` : '<div class="account-statement-empty">لا توجد دفعات مسجلة لهذا الزبون.</div>'}
+      </section>
+
+      <section class="account-statement-section">
+        <div class="account-statement-section-head">
+          <h3>الفواتير المرتبطة</h3>
+          <span>${linkedInvoices.length} فاتورة</span>
+        </div>
+        ${linkedInvoices.length ? `
+          <div class="account-invoices-list">
+            ${linkedInvoices.map((record) => {
+              const net = getInvoiceNetTotal(record)
+              const invoicePaid = getInvoicePaidTotal(record)
+              const invoiceRemaining = getInvoiceRemainingTotal(record)
+              const status = getInvoicePaymentStatus(record)
+              return `
+                <article class="account-invoice-card">
+                  <div class="account-invoice-head">
+                    <strong>فاتورة رقم ${escapeHtml(record.rootInvoiceNumber || record.invoiceNumber)}${record.workshopName?.trim() ? ` | ورشة ${escapeHtml(record.workshopName.trim())}` : ''}</strong>
+                    <span class="invoice-status-badge is-${status.key}">${escapeHtml(status.label)}</span>
+                  </div>
+                  <div class="account-invoice-financials">
+                    <div><span>الإجمالي</span><strong>${money(net)} دولار</strong></div>
+                    <div><span>المسدد</span><strong>${money(invoicePaid)} دولار</strong></div>
+                    <div><span>الباقي</span><strong>${money(invoiceRemaining)} دولار</strong></div>
+                  </div>
+                  ${record.payments.length ? `
+                    <div class="account-invoice-payments">
+                      ${[...record.payments].sort((a, b) =>
+                        (a.date || '').localeCompare(b.date || '')
+                        || (a.createdAt || '').localeCompare(b.createdAt || '')
+                      ).map((payment, paymentIndex) => `
+                        <span><b>${paymentIndex + 1}. ${money(payment.amount)} دولار</b> — ${escapeHtml(payment.date || 'بدون تاريخ')}${payment.note ? ` — ${escapeHtml(payment.note)}` : ''}</span>
+                      `).join('')}
+                    </div>
+                  ` : '<span class="account-invoice-no-payments">لا توجد دفعات على هذه الفاتورة</span>'}
+                </article>
+              `
+            }).join('')}
+          </div>
+        ` : '<div class="account-statement-empty">لا توجد فواتير مرتبطة بهذا الزبون.</div>'}
+      </section>
+
+      <div class="account-statement-actions">
+        <button type="button" class="secondary-button" data-close-account>إغلاق</button>
+        <button type="button" class="primary-button" id="export-account-statement">تصدير كشف الحساب كصورة</button>
+      </div>
+    </div>
+  `)
+
+  backdrop.querySelectorAll<HTMLButtonElement>('[data-close-account]').forEach((button) => {
+    button.addEventListener('click', () => backdrop.remove())
+  })
+  backdrop.querySelector<HTMLButtonElement>('#export-account-statement')!.addEventListener('click', () => {
+    renderCustomerAccountExportConfirmation(backdrop, customer)
+  })
+}
+
+function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement, customer: Customer) {
+  const linkedInvoices = getCustomerInvoiceRecords(customer)
+  const confirmBackdrop = modal(`
+    <div class="account-export-confirmation">
+      <div class="account-export-confirmation-body">
+        <button type="button" class="modal-close" data-close-account-export aria-label="إغلاق">${svg('close')}</button>
+        <p class="eyebrow">تأكيد تصدير الكشف</p>
+        <h2>بيانات صورة كشف الحساب</h2>
+        <p class="account-export-confirmation-copy">راجع اسم الورشة لكل فاتورة، وأضف ملاحظة اختيارية تظهر في أسفل الصورة.</p>
+        <div class="account-export-workshops">
+          ${linkedInvoices.length ? linkedInvoices.map((record) => `
+            <label>
+              <span>فاتورة رقم ${escapeHtml(record.rootInvoiceNumber || record.invoiceNumber)}</span>
+              <input type="text"
+                maxlength="60"
+                data-account-workshop="${escapeHtml(record.id)}"
+                value="${escapeHtml(record.workshopName?.trim() || '')}"
+                placeholder="اسم الورشة">
+            </label>
+          `).join('') : '<div class="account-statement-empty">لا توجد فواتير مرتبطة بهذا الزبون.</div>'}
+        </div>
+        <fieldset class="account-export-note-field">
+          <legend>ملاحظة أسفل الكشف</legend>
+          <textarea id="account-export-note" maxlength="300" rows="3" placeholder="أدخل ملاحظة اختيارية"></textarea>
+        </fieldset>
+        <section class="account-export-preview" hidden>
+          <div class="account-export-preview-head">
+            <strong>معاينة كشف الحساب</strong>
+          </div>
+          <div class="account-export-preview-frame">
+            <img id="account-export-preview-image" alt="معاينة كشف حساب الزبون">
+          </div>
+        </section>
+      </div>
+      <div class="account-statement-actions">
+        <button type="button" class="secondary-button" data-close-account-export>رجوع</button>
+        <button type="button" class="secondary-button" id="preview-account-export">معاينة</button>
+        <button type="button" class="primary-button" id="confirm-account-export">تأكيد وتصدير الصورة</button>
+      </div>
+    </div>
+  `)
+
+  const closeConfirmation = () => {
+    confirmBackdrop.remove()
+    document.body.append(accountBackdrop)
+  }
+  confirmBackdrop.querySelectorAll<HTMLButtonElement>('[data-close-account-export]').forEach((button) => {
+    button.addEventListener('click', closeConfirmation)
+  })
+  const previewButton = confirmBackdrop.querySelector<HTMLButtonElement>('#preview-account-export')!
+  const previewSection = confirmBackdrop.querySelector<HTMLElement>('.account-export-preview')!
+  const previewImage = confirmBackdrop.querySelector<HTMLImageElement>('#account-export-preview-image')!
+  let previewVisible = false
+
+  const collectExportOptions = () => {
+    const workshopNames: Record<string, string> = {}
+    confirmBackdrop.querySelectorAll<HTMLInputElement>('[data-account-workshop]').forEach((input) => {
+      workshopNames[input.dataset.accountWorkshop || ''] = input.value.trim()
+    })
+    const note = confirmBackdrop.querySelector<HTMLTextAreaElement>('#account-export-note')?.value.trim() || ''
+    return { workshopNames, note }
+  }
+
+  const cancelPreview = () => {
+    previewVisible = false
+    previewSection.hidden = true
+    previewImage.removeAttribute('src')
+    previewButton.textContent = 'معاينة'
+  }
+
+  previewButton.addEventListener('click', async () => {
+    if (previewVisible) {
+      cancelPreview()
+      return
+    }
+    const { workshopNames, note } = collectExportOptions()
+    previewButton.disabled = true
+    previewButton.textContent = 'جارٍ تجهيز المعاينة...'
+    const result = await exportCustomerAccountStatementA4(
+      previewButton,
+      customer,
+      workshopNames,
+      note,
+      true,
+    )
+    previewButton.disabled = false
+    if (typeof result === 'string') {
+      previewImage.src = result
+      previewSection.hidden = false
+      previewVisible = true
+      previewButton.textContent = 'إلغاء المعاينة'
+      previewSection.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    } else {
+      previewButton.textContent = 'معاينة'
+    }
+  })
+  confirmBackdrop.querySelectorAll<HTMLInputElement>('[data-account-workshop]').forEach((input) => {
+    input.addEventListener('input', () => {
+      if (previewVisible) cancelPreview()
+    })
+  })
+  confirmBackdrop.querySelector<HTMLTextAreaElement>('#account-export-note')?.addEventListener('input', () => {
+    if (previewVisible) cancelPreview()
+  })
+  confirmBackdrop.querySelector<HTMLButtonElement>('#confirm-account-export')!.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement
+    const workshopNames: Record<string, string> = {}
+    confirmBackdrop.querySelectorAll<HTMLInputElement>('[data-account-workshop]').forEach((input) => {
+      workshopNames[input.dataset.accountWorkshop || ''] = input.value.trim()
+    })
+    const note = confirmBackdrop.querySelector<HTMLTextAreaElement>('#account-export-note')?.value.trim() || ''
+    const exported = await exportCustomerAccountStatementA4(button, customer, workshopNames, note)
+    if (exported) confirmBackdrop.remove()
+  })
+}
+
+async function exportCustomerAccountStatementA4(
+  button: HTMLButtonElement,
+  customer: Customer,
+  workshopNames: Record<string, string>,
+  exportNote: string,
+  previewOnly = false,
+): Promise<boolean | string> {
+  button.disabled = true
+  try {
+    void exportCustomerAccountStatement
+    const linkedInvoices = getCustomerInvoiceRecords(customer)
+    const total = linkedInvoices.reduce((sum, record) => sum + getInvoiceNetTotal(record), 0)
+    const paid = linkedInvoices.reduce((sum, record) => sum + getInvoicePaidTotal(record), 0)
+    const remaining = linkedInvoices.reduce((sum, record) => sum + getInvoiceRemainingTotal(record), 0)
+    const allPayments = linkedInvoices.flatMap((record) =>
+      record.payments.map((payment) => ({
+        ...payment,
+        invoiceNumber: record.rootInvoiceNumber || record.invoiceNumber,
+        workshopName: workshopNames[record.id]?.trim() || record.workshopName?.trim() || '',
+      })),
+    ).sort((a, b) =>
+      (a.date || '').localeCompare(b.date || '') || (a.createdAt || '').localeCompare(b.createdAt || ''),
+    )
+
+    const width = 1123
+    const height = 1587
+    const scale = 2
+    const teal = '#007d79'
+    const ink = '#203044'
+    const muted = '#718096'
+    const line = '#dfe7e9'
+
+    const createPage = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = width * scale
+      canvas.height = height * scale
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Canvas is unavailable')
+      context.scale(scale, scale)
+      context.textBaseline = 'middle'
+      context.fillStyle = '#f4f7f6'
+      context.fillRect(0, 0, width, height)
+      context.fillStyle = teal
+      context.fillRect(0, 0, width, 22)
+      return { canvas, context }
+    }
+
+    const drawLegend = (
+      context: CanvasRenderingContext2D,
+      text: string,
+      centerX: number,
+      centerY: number,
+      background: string,
+      border: string,
+      color: string,
+    ) => {
+      context.save()
+      context.font = '800 12px Cairo, sans-serif'
+      context.textAlign = 'center'
+      const legendWidth = Math.max(110, context.measureText(text).width + 28)
+      context.fillStyle = background
+      context.strokeStyle = border
+      context.lineWidth = 1.5
+      context.beginPath()
+      context.roundRect(centerX - legendWidth / 2, centerY - 14, legendWidth, 28, 14)
+      context.fill()
+      context.stroke()
+      context.fillStyle = color
+      context.fillText(text, centerX, centerY)
+      context.restore()
+    }
+
+    const drawPageHeader = (
+      context: CanvasRenderingContext2D,
+      title: string,
+      pageIndex: number,
+      pageCount: number,
+    ) => {
+      context.textAlign = 'right'
+      context.fillStyle = ink
+      context.font = '800 21px Cairo, sans-serif'
+      context.fillText(title, 1043, 58)
+      context.fillStyle = muted
+      context.font = '700 13px Cairo, sans-serif'
+      context.fillText(`كشف حساب زبون | صفحة ${pageIndex} من ${pageCount}`, 1043, 84)
+    }
+
+    const drawPaymentGrid = (
+      context: CanvasRenderingContext2D,
+      payments: Array<InvoicePayment & { invoiceNumber?: string; workshopName?: string }>,
+      startNumber: number,
+      boxX: number,
+      boxY: number,
+      boxWidth: number,
+    ) => {
+      const columns = 5
+      const rows = Math.ceil(payments.length / columns)
+      const gap = 12
+      const padding = 18
+      const cellWidth = (boxWidth - padding * 2 - gap * (columns - 1)) / columns
+      const cellHeight = 58
+      const boxHeight = padding * 2 + rows * cellHeight + Math.max(0, rows - 1) * gap
+      context.fillStyle = '#fff'
+      context.strokeStyle = line
+      context.beginPath()
+      context.roundRect(boxX, boxY, boxWidth, boxHeight, 12)
+      context.fill()
+      context.stroke()
+
+      payments.forEach((payment, index) => {
+        const row = Math.floor(index / columns)
+        const column = columns - 1 - (index % columns)
+        const cellX = boxX + padding + column * (cellWidth + gap)
+        const cellY = boxY + padding + row * (cellHeight + gap)
+        context.fillStyle = '#f7faf9'
+        context.beginPath()
+        context.roundRect(cellX, cellY, cellWidth, cellHeight, 8)
+        context.fill()
+
+        context.fillStyle = teal
+        context.beginPath()
+        context.arc(cellX + cellWidth - 16, cellY + 14, 8, 0, Math.PI * 2)
+        context.fill()
+        context.fillStyle = '#fff'
+        context.textAlign = 'center'
+        context.font = '800 9px Cairo, sans-serif'
+        context.fillText(String(startNumber + index), cellX + cellWidth - 16, cellY + 14)
+
+        context.textAlign = 'center'
+        context.fillStyle = ink
+        context.font = '800 12px Cairo, sans-serif'
+        context.fillText(`${money(payment.amount)} دولار`, cellX + (cellWidth - 24) / 2, cellY + 18)
+        context.fillStyle = muted
+        context.font = '700 9px Cairo, sans-serif'
+        context.fillText(payment.date || 'بدون تاريخ', cellX + (cellWidth - 24) / 2, cellY + 32)
+        if (payment.invoiceNumber) {
+          const invoiceLabel = payment.workshopName
+            ? `فاتورة ${payment.invoiceNumber} | ورشة ${payment.workshopName}`
+            : `فاتورة ${payment.invoiceNumber}`
+          context.fillText(invoiceLabel, cellX + (cellWidth - 24) / 2, cellY + 46)
+        } else if (payment.note) {
+          context.fillText(payment.note, cellX + (cellWidth - 24) / 2, cellY + 46)
+        }
+      })
+      return boxY + boxHeight
+    }
+
+    const first = createPage()
+    drawPageHeader(first.context, 'كشف حساب زبون', 1, 1)
+    first.context.textAlign = 'right'
+    first.context.fillStyle = ink
+    first.context.font = '800 30px Cairo, sans-serif'
+    first.context.fillText(customer.name, 1043, 125)
+    first.context.fillStyle = muted
+    first.context.font = '700 14px Cairo, sans-serif'
+    const contact = [customer.phone, customer.address, customer.neighborhood].filter(Boolean).join(' | ')
+    if (contact) first.context.fillText(contact, 1043, 154)
+    if (customer.notes) first.context.fillText(customer.notes, 1043, 178)
+
+    const summary = [
+      { label: 'إجمالي الفواتير', value: total, color: teal, background: '#edf8f6' },
+      { label: 'إجمالي المسدد', value: paid, color: '#166534', background: '#f0faf3' },
+      { label: 'الرصيد المتبقي', value: remaining, color: remaining <= 0.00001 ? '#166534' : '#92400e', background: remaining <= 0.00001 ? '#f0faf3' : '#fff8ed' },
+    ]
+    summary.forEach((item, index) => {
+      const cardWidth = 300
+      const cardX = 1043 - cardWidth - index * 330
+      first.context.fillStyle = item.background
+      first.context.strokeStyle = line
+      first.context.beginPath()
+      first.context.roundRect(cardX, 210, cardWidth, 96, 14)
+      first.context.fill()
+      first.context.stroke()
+      first.context.textAlign = 'center'
+      first.context.fillStyle = muted
+      first.context.font = '700 14px Cairo, sans-serif'
+      first.context.fillText(item.label, cardX + cardWidth / 2, 242)
+      first.context.fillStyle = item.color
+      first.context.font = '800 23px Cairo, sans-serif'
+      first.context.fillText(`${money(item.value)} دولار`, cardX + cardWidth / 2, 276)
+    })
+
+    first.context.textAlign = 'right'
+    first.context.fillStyle = ink
+    first.context.font = '800 19px Cairo, sans-serif'
+    first.context.fillText(`سجل الدفعات — ${allPayments.length} دفعة`, 1043, 350)
+    if (!allPayments.length) {
+      first.context.fillStyle = '#fff'
+      first.context.strokeStyle = line
+      first.context.beginPath()
+      first.context.roundRect(80, 380, 963, 70, 12)
+      first.context.fill()
+      first.context.stroke()
+      first.context.textAlign = 'center'
+      first.context.fillStyle = muted
+      first.context.font = '700 15px Cairo, sans-serif'
+      first.context.fillText('لا توجد دفعات مسجلة لهذا الزبون', 561, 415)
+      var paymentGridEnd = 466
+    } else {
+      const paymentRows = Math.ceil(allPayments.length / 5)
+      paymentGridEnd = 380 + 36 + paymentRows * 58 + Math.max(0, paymentRows - 1) * 12
+      drawPaymentGrid(first.context, allPayments, 1, 80, 380, 963)
+    }
+    const ctx = first.context
+    let invoiceY = paymentGridEnd + 32
+    ctx.textAlign = 'right'
+    ctx.strokeStyle = line
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(80, paymentGridEnd + 18)
+    ctx.lineTo(1043, paymentGridEnd + 18)
+    ctx.stroke()
+    ctx.fillStyle = ink
+    ctx.font = '800 19px Cairo, sans-serif'
+    ctx.fillText(`الفواتير المرتبطة — ${linkedInvoices.length} فاتورة`, 1043, paymentGridEnd + 46)
+
+    const canvases: HTMLCanvasElement[] = [first.canvas]
+    let activeContext = ctx
+    invoiceY = paymentGridEnd + 78
+
+    linkedInvoices.forEach((record) => {
+      const sortedPayments = [...record.payments].sort((a, b) =>
+        (a.date || '').localeCompare(b.date || '') || (a.createdAt || '').localeCompare(b.createdAt || ''))
+      const rows = Math.ceil(sortedPayments.length / 5)
+      const paymentsHeight = sortedPayments.length ? 36 + rows * 58 + Math.max(0, rows - 1) * 12 : 56
+      const cardHeight = 184 + paymentsHeight
+      if (invoiceY + cardHeight > 1480) {
+        const nextPage = createPage()
+        canvases.push(nextPage.canvas)
+        activeContext = nextPage.context
+        drawPageHeader(activeContext, 'كشف حساب زبون - متابعة', canvases.length, 0)
+        activeContext.textAlign = 'right'
+        activeContext.fillStyle = ink
+        activeContext.font = '800 19px Cairo, sans-serif'
+        activeContext.fillText(`الفواتير المرتبطة — متابعة`, 1043, 120)
+        invoiceY = 150
+      }
+
+      activeContext.fillStyle = '#fff'
+      activeContext.strokeStyle = line
+      activeContext.beginPath()
+      activeContext.roundRect(80, invoiceY, 963, cardHeight, 14)
+      activeContext.fill()
+      activeContext.stroke()
+
+      const workshop = workshopNames[record.id]?.trim() || record.workshopName?.trim() || ''
+      activeContext.textAlign = 'right'
+      activeContext.fillStyle = ink
+      activeContext.font = '800 17px Cairo, sans-serif'
+      activeContext.fillText(`فاتورة رقم ${record.rootInvoiceNumber || record.invoiceNumber}${workshop ? ` | ورشة ${workshop}` : ''}`, 1012, invoiceY + 32)
+
+      const status = getInvoicePaymentStatus(record)
+      const statusStyle = status.key === 'paid'
+        ? { background: '#dcfce7', border: '#86efac', color: '#166534' }
+        : status.key === 'partial'
+          ? { background: '#fef3c7', border: '#fcd34d', color: '#92400e' }
+          : { background: '#fee2e2', border: '#fca5a5', color: '#991b1b' }
+      drawLegend(activeContext, status.label, 150, invoiceY + 32, statusStyle.background, statusStyle.border, statusStyle.color)
+      drawLegend(activeContext, `عدد الدفعات لهذه الفاتورة: ${sortedPayments.length}`, 610, invoiceY + 32, '#eef9f7', '#9ecdc8', teal)
+
+      const invoiceSummary = [
+        { label: 'الإجمالي', value: getInvoiceNetTotal(record) },
+        { label: 'المسدد', value: getInvoicePaidTotal(record) },
+        { label: 'الباقي', value: getInvoiceRemainingTotal(record) },
+      ]
+      invoiceSummary.forEach((item, index) => {
+        const cardWidth = 260
+        const cardX = 1012 - cardWidth - index * 280
+        activeContext.fillStyle = '#f7faf9'
+        activeContext.beginPath()
+        activeContext.roundRect(cardX, invoiceY + 92, cardWidth, 54, 10)
+        activeContext.fill()
+        activeContext.textAlign = 'center'
+        activeContext.fillStyle = muted
+        activeContext.font = '700 11px Cairo, sans-serif'
+        activeContext.fillText(item.label, cardX + cardWidth / 2, invoiceY + 110)
+        activeContext.fillStyle = ink
+        activeContext.font = '800 15px Cairo, sans-serif'
+        activeContext.fillText(`${money(item.value)} دولار`, cardX + cardWidth / 2, invoiceY + 130)
+      })
+
+      if (sortedPayments.length) {
+        drawPaymentGrid(activeContext, sortedPayments, 1, 112, invoiceY + 158, 899)
+      } else {
+        activeContext.textAlign = 'center'
+        activeContext.fillStyle = muted
+        activeContext.font = '700 13px Cairo, sans-serif'
+        activeContext.fillText('لا توجد دفعات على هذه الفاتورة', 561, invoiceY + 182)
+      }
+      invoiceY += cardHeight + 16
+    })
+
+    if (exportNote) {
+      ctx.fillStyle = '#eef7f5'
+      ctx.strokeStyle = '#b9dcd7'
+      ctx.beginPath()
+      ctx.roundRect(80, 1488, 963, 60, 12)
+      ctx.fill()
+      ctx.stroke()
+      ctx.textAlign = 'center'
+      ctx.fillStyle = muted
+      ctx.font = '700 14px Cairo, sans-serif'
+      ctx.fillText(`ملاحظة: ${exportNote}`, 561, 1518)
+    }
+
+    const pageCount = canvases.length
+    for (let index = 0; index < canvases.length; index += 1) {
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvases[index].toBlob((result) => result ? resolve(result) : reject(new Error('Failed to create PNG')), 'image/png')
+      })
+      if (previewOnly && index === 0) return canvases[index].toDataURL('image/png')
+      if (!previewOnly) {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `كشف-حساب-${customer.name}-صفحة-${index + 1}-من-${pageCount}.png`
+        document.body.append(link)
+        link.click()
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+    }
+    if (!previewOnly) showToast('تم تصدير كشف الحساب بصور A4.')
+    return true
+  } catch (error) {
+    console.error('Failed to export A4 customer account statement:', error)
+    showToast('تعذر تصدير كشف الحساب. حاول مجددًا.')
+    return false
+  } finally {
+    button.disabled = false
+  }
+}
+
+async function exportCustomerAccountStatement(
+  button: HTMLButtonElement,
+  customer: Customer,
+  workshopNames: Record<string, string>,
+  exportNote: string,
+  previewOnly = false,
+): Promise<boolean | string> {
+  button.disabled = true
+  try {
+    const linkedInvoices = getCustomerInvoiceRecords(customer)
+    const total = linkedInvoices.reduce((sum, record) => sum + getInvoiceNetTotal(record), 0)
+    const paid = linkedInvoices.reduce((sum, record) => sum + getInvoicePaidTotal(record), 0)
+    const remaining = linkedInvoices.reduce((sum, record) => sum + getInvoiceRemainingTotal(record), 0)
+    const allPayments = linkedInvoices
+      .flatMap((record) => record.payments.map((payment) => ({
+        ...payment,
+        invoiceNumber: record.rootInvoiceNumber || record.invoiceNumber,
+      })))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || '').localeCompare(b.createdAt || ''))
+
+    const sortPayments = (payments: InvoicePayment[]) => [...payments].sort((a, b) =>
+      (a.date || '').localeCompare(b.date || '') || (a.createdAt || '').localeCompare(b.createdAt || ''))
+
+    const paymentHeight = (count: number) => count <= 5
+      ? 76 + count * 64
+      : (() => {
+        const chunks = Array.from({ length: Math.ceil(count / 5) }, (_, index) =>
+          Math.min(5, count - index * 5))
+        const rows = Math.ceil(chunks.length / 2)
+        const lastPair = chunks.slice((rows - 1) * 2)
+        const lastRowHeight = 76 + Math.max(...lastPair) * 64
+        return Math.max(0, rows - 1) * 410 + lastRowHeight
+      })()
+
+    let estimatedHeight = 520
+    estimatedHeight += allPayments.length ? paymentHeight(allPayments.length) : 120
+    linkedInvoices.forEach((record) => {
+      const count = record.payments.length
+      estimatedHeight += 196 + (count ? paymentHeight(count) : 56) + 24 + 20
+    })
+    estimatedHeight += exportNote ? 100 : 50
+
+    const width = 1200
+    const scale = 2
+    const canvas = document.createElement('canvas')
+    canvas.width = width * scale
+    canvas.height = estimatedHeight * scale
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas is unavailable')
+    context.scale(scale, scale)
+    context.textBaseline = 'middle'
+
+    const teal = '#007d79'
+    const ink = '#203044'
+    const muted = '#718096'
+    const line = '#dfe7e9'
+    const drawLegend = (
+      text: string,
+      centerX: number,
+      centerY: number,
+      background: string,
+      border: string,
+      color: string,
+    ) => {
+      context.save()
+      context.font = '800 13px Cairo, sans-serif'
+      context.textAlign = 'center'
+      const width = Math.max(108, context.measureText(text).width + 28)
+      context.fillStyle = background
+      context.strokeStyle = border
+      context.lineWidth = 1.5
+      context.beginPath()
+      context.roundRect(centerX - width / 2, centerY - 15, width, 30, 15)
+      context.fill()
+      context.stroke()
+      context.fillStyle = color
+      context.fillText(text, centerX, centerY)
+      context.restore()
+    }
+    context.fillStyle = '#f4f7f6'
+    context.fillRect(0, 0, width, estimatedHeight)
+    context.fillStyle = teal
+    context.fillRect(0, 0, width, 24)
+
+    context.textAlign = 'right'
+    context.fillStyle = ink
+    context.font = '800 24px Cairo, sans-serif'
+    context.fillText('كشف حساب زبون', 1120, 72)
+    context.font = '800 38px Cairo, sans-serif'
+    context.fillText(customer.name, 1120, 118)
+    context.fillStyle = muted
+    context.font = '700 18px Cairo, sans-serif'
+    const contact = [customer.phone, customer.address, customer.neighborhood].filter(Boolean).join('  |  ')
+    if (contact) context.fillText(contact, 1120, 158)
+    if (customer.notes) {
+      context.font = '600 16px Cairo, sans-serif'
+      context.fillText(customer.notes, 1120, 188)
+    }
+
+    let y = 230
+    const summary = [
+      { label: 'إجمالي الفواتير', value: total, color: teal, background: '#edf8f6' },
+      { label: 'إجمالي المسدد', value: paid, color: '#166534', background: '#f0faf3' },
+      { label: 'الرصيد المتبقي', value: remaining, color: remaining <= 0.00001 ? '#166534' : '#92400e', background: remaining <= 0.00001 ? '#f0faf3' : '#fff8ed' },
+    ]
+    summary.forEach((item, index) => {
+      const cardWidth = 330
+      const cardRight = 1120 - index * 355
+      const cardX = cardRight - cardWidth
+      context.fillStyle = item.background
+      context.strokeStyle = line
+      context.lineWidth = 2
+      context.beginPath()
+      context.roundRect(cardX, y, cardWidth, 124, 18)
+      context.fill()
+      context.stroke()
+      context.textAlign = 'center'
+      context.fillStyle = muted
+      context.font = '700 17px Cairo, sans-serif'
+      context.fillText(item.label, cardX + cardWidth / 2, y + 42)
+      context.fillStyle = item.color
+      context.font = '800 30px Cairo, sans-serif'
+      context.fillText(`${money(item.value)} دولار`, cardX + cardWidth / 2, y + 88)
+    })
+
+    y = 390
+    context.textAlign = 'right'
+    context.fillStyle = ink
+    context.font = '800 24px Cairo, sans-serif'
+    context.fillText(`سجل الدفعات — ${allPayments.length} دفعة`, 1120, y)
+    y += 44
+
+    const drawPaymentRow = (
+      payment: InvoicePayment & { invoiceNumber?: string },
+      number: number,
+      x: number,
+      rowY: number,
+      rowWidth: number,
+      compact: boolean,
+    ) => {
+      const itemHeight = 54
+      const itemX = x + 18
+      const itemWidth = rowWidth - 36
+      context.fillStyle = '#f7faf9'
+      context.beginPath()
+      context.roundRect(itemX, rowY, itemWidth, itemHeight, 10)
+      context.fill()
+
+      context.fillStyle = teal
+      context.beginPath()
+      context.arc(itemX + itemWidth - 27, rowY + itemHeight / 2, 13, 0, Math.PI * 2)
+      context.fill()
+      context.fillStyle = '#fff'
+      context.textAlign = 'center'
+      context.font = '800 12px Cairo, sans-serif'
+      context.fillText(String(number), itemX + itemWidth - 27, rowY + itemHeight / 2)
+
+      context.textAlign = 'right'
+      context.fillStyle = ink
+      context.font = compact ? '800 16px Cairo, sans-serif' : '800 13px Cairo, sans-serif'
+      context.fillText(`${money(payment.amount)} دولار`, itemX + itemWidth - 52, rowY + 19)
+      context.fillStyle = muted
+      context.font = compact ? '700 13px Cairo, sans-serif' : '700 11px Cairo, sans-serif'
+      const details = `${payment.invoiceNumber ? `فاتورة ${payment.invoiceNumber}  |  ` : ''}${payment.date || 'بدون تاريخ'}${payment.note ? `  |  ${payment.note}` : ''}`
+      context.fillText(details, itemX + itemWidth - 52, rowY + 40)
+    }
+
+    if (!allPayments.length) {
+      context.fillStyle = '#fff'
+      context.strokeStyle = line
+      context.beginPath()
+      context.roundRect(80, y, 1040, 90, 16)
+      context.fill()
+      context.stroke()
+      context.textAlign = 'center'
+      context.fillStyle = muted
+      context.font = '700 18px Cairo, sans-serif'
+      context.fillText('لا توجد دفعات مسجلة لهذا الزبون', 600, y + 45)
+      y += 120
+    } else if (allPayments.length <= 5) {
+      const height = 76 + allPayments.length * 64
+      context.fillStyle = '#fff'
+      context.strokeStyle = line
+      context.beginPath()
+      context.roundRect(80, y, 1040, height, 16)
+      context.fill()
+      context.stroke()
+      drawLegend(
+        `عدد الدفعات: ${allPayments.length}`,
+        1090 - 55,
+        y,
+        '#eef9f7',
+        '#9ecdc8',
+        teal,
+      )
+      allPayments.forEach((payment, index) => drawPaymentRow(payment, index + 1, 80, y + 58 + index * 64, 1040, true))
+      y += height + 20
+    } else {
+      const chunks = Array.from({ length: Math.ceil(allPayments.length / 5) }, (_, index) =>
+        allPayments.slice(index * 5, index * 5 + 5))
+      chunks.forEach((chunk, chunkIndex) => {
+        const row = Math.floor(chunkIndex / 2)
+        const column = chunkIndex % 2
+        const boxX = column === 0 ? 620 : 100
+        const boxY = y + row * 410
+        const height = 76 + chunk.length * 64
+        context.fillStyle = '#fff'
+        context.strokeStyle = line
+        context.beginPath()
+        context.roundRect(boxX, boxY, 500, height, 16)
+        context.fill()
+        context.stroke()
+        drawLegend(
+          `عدد الدفعات: ${chunk.length}`,
+          boxX + 375,
+          boxY,
+          '#eef9f7',
+          '#9ecdc8',
+          teal,
+        )
+        chunk.forEach((payment, index) =>
+          drawPaymentRow(payment, chunkIndex * 5 + index + 1, boxX, boxY + 58 + index * 64, 500, false))
+      })
+      y += Math.ceil(chunks.length / 2) * 410
+    }
+
+    y += 20
+    context.textAlign = 'right'
+    context.fillStyle = ink
+    context.font = '800 24px Cairo, sans-serif'
+    context.fillText(`الفواتير المرتبطة — ${linkedInvoices.length} فاتورة`, 1120, y)
+    y += 44
+
+    linkedInvoices.forEach((record) => {
+      const sortedPayments = sortPayments(record.payments)
+      let paymentsHeight = 56
+      if (sortedPayments.length <= 5 && sortedPayments.length > 0) {
+        paymentsHeight = 76 + sortedPayments.length * 64
+      } else if (sortedPayments.length > 5) {
+        const chunks = Array.from({ length: Math.ceil(sortedPayments.length / 5) }, (_, index) =>
+          sortedPayments.slice(index * 5, index * 5 + 5))
+        const rows = Math.ceil(chunks.length / 2)
+        const lastPair = chunks.slice((rows - 1) * 2)
+        const lastRowHeight = 76 + Math.max(...lastPair.map((chunk) => chunk.length)) * 64
+        paymentsHeight = Math.max(0, rows - 1) * 410 + lastRowHeight
+      }
+      const cardHeight = 196 + paymentsHeight + 24
+      context.fillStyle = '#fff'
+      context.strokeStyle = line
+      context.beginPath()
+      context.roundRect(80, y, 1040, cardHeight, 16)
+      context.fill()
+      context.stroke()
+
+      const workshop = workshopNames[record.id]?.trim() || record.workshopName?.trim() || ''
+      context.textAlign = 'right'
+      context.fillStyle = ink
+      context.font = '800 21px Cairo, sans-serif'
+      context.fillText(`فاتورة رقم ${record.rootInvoiceNumber || record.invoiceNumber}${workshop ? ` | ورشة ${workshop}` : ''}`, 1088, y + 42)
+      const status = getInvoicePaymentStatus(record)
+      if (status.key === 'paid') {
+        drawLegend(status.label, 185, y + 5, '#dcfce7', '#86efac', '#166534')
+      } else if (status.key === 'partial') {
+        drawLegend(status.label, 185, y + 5, '#fef3c7', '#fcd34d', '#92400e')
+      } else {
+        drawLegend(status.label, 185, y + 5, '#fee2e2', '#fca5a5', '#991b1b')
+      }
+
+      const invoiceSummary = [
+        { label: 'الإجمالي', value: getInvoiceNetTotal(record) },
+        { label: 'المسدد', value: getInvoicePaidTotal(record) },
+        { label: 'الباقي', value: getInvoiceRemainingTotal(record) },
+      ]
+      invoiceSummary.forEach((item, index) => {
+        const cardRight = 1044 - index * 260
+        context.fillStyle = '#f7faf9'
+        context.beginPath()
+        context.roundRect(cardRight - 224, y + 112, 224, 62, 12)
+        context.fill()
+        context.textAlign = 'center'
+        context.fillStyle = muted
+        context.font = '700 14px Cairo, sans-serif'
+        context.fillText(item.label, cardRight - 112, y + 132)
+        context.fillStyle = ink
+        context.font = '800 18px Cairo, sans-serif'
+        context.fillText(`${money(item.value)} دولار`, cardRight - 112, y + 158)
+      })
+
+      const paymentY = y + 196
+      if (!sortedPayments.length) {
+        context.textAlign = 'right'
+        context.fillStyle = muted
+        context.font = '700 15px Cairo, sans-serif'
+        context.fillText('لا توجد دفعات على هذه الفاتورة', 1088, paymentY + 28)
+      } else if (sortedPayments.length <= 5) {
+        const paymentContainerHeight = 76 + sortedPayments.length * 64
+        context.fillStyle = '#f7faf9'
+        context.strokeStyle = line
+        context.beginPath()
+        context.roundRect(100, paymentY, 1000, paymentContainerHeight, 14)
+        context.fill()
+        context.stroke()
+        drawLegend(
+          `عدد الدفعات لهذه الفاتورة: ${sortedPayments.length}`,
+          600,
+          paymentY,
+          '#eef9f7',
+          '#9ecdc8',
+          teal,
+        )
+        sortedPayments.forEach((payment, index) =>
+          drawPaymentRow(payment, index + 1, 100, paymentY + 48 + index * 64, 1000, true))
+      } else {
+        const chunks = Array.from({ length: Math.ceil(sortedPayments.length / 5) }, (_, index) =>
+          sortedPayments.slice(index * 5, index * 5 + 5))
+        chunks.forEach((chunk, chunkIndex) => {
+          const row = Math.floor(chunkIndex / 2)
+          const column = chunkIndex % 2
+          const boxX = column === 0 ? 620 : 100
+          const boxY = paymentY + row * 410
+          context.fillStyle = '#f7faf9'
+          context.strokeStyle = line
+          context.beginPath()
+          context.roundRect(boxX, boxY, 480, 76 + chunk.length * 64, 14)
+          context.fill()
+          context.stroke()
+          drawLegend(
+            `عدد الدفعات لهذه الفاتورة: ${chunk.length}`,
+            boxX + 240,
+            boxY,
+            '#eef9f7',
+            '#9ecdc8',
+            teal,
+          )
+          chunk.forEach((payment, index) =>
+            drawPaymentRow(payment, chunkIndex * 5 + index + 1, boxX, boxY + 48 + index * 64, 480, false))
+        })
+      }
+      y += cardHeight + 20
+    })
+
+    if (exportNote) {
+      y += 24
+      context.fillStyle = '#eef7f5'
+      context.strokeStyle = '#b9dcd7'
+      context.beginPath()
+      context.roundRect(80, y, 1040, 76, 14)
+      context.fill()
+      context.stroke()
+      context.textAlign = 'center'
+      context.fillStyle = muted
+      context.font = '700 15px Cairo, sans-serif'
+      context.fillText(`ملاحظة: ${exportNote}`, 600, y + 38)
+    }
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Failed to create PNG')), 'image/png')
+    })
+    if (previewOnly) return canvas.toDataURL('image/png')
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `كشف-حساب-${customer.name}-${new Date().toISOString().slice(0, 10)}.png`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    showToast('تم تصدير كشف الحساب كصورة.')
+    return true
+  } catch (error) {
+    console.error('Failed to export customer account statement:', error)
+    showToast('تعذر تصدير كشف الحساب. حاول مجددًا.')
+    return false
+  } finally {
+    button.disabled = false
+  }
 }
 
 function renderInvoicesSection() {
