@@ -17,6 +17,15 @@ export type BackupSettings = {
   darkMode: boolean
   localCurrencyCode: string
   localCurrencyName: string
+  companyProfile: BackupCompanyProfile
+}
+
+type BackupCompanyProfile = {
+  name: string
+  offerings: string
+  details: string
+  address: string
+  contacts: { name: string; phone: string }[]
 }
 
 type BackupDocument = { id: string; data: Record<string, unknown> }
@@ -95,13 +104,14 @@ const maxArchiveBytes = 80 * 1024 * 1024
 const maxJsonBytes = 64 * 1024 * 1024
 const firestoreBatchSize = 450
 const firestoreBatchByteLimit = 8 * 1024 * 1024
-const settingsFields: (keyof BackupSettings)[] = [
+const legacySettingsFields: (keyof BackupSettings)[] = [
   'syriaEnabled',
   'exchangeRate',
   'darkMode',
   'localCurrencyCode',
   'localCurrencyName',
 ]
+const settingsFields: (keyof BackupSettings)[] = [...legacySettingsFields, 'companyProfile']
 
 declare const __APP_VERSION__: string
 
@@ -124,12 +134,30 @@ function normalizedSettings(value: unknown): BackupSettings {
   const localCurrencyName = typeof data.localCurrencyName === 'string' && data.localCurrencyName.trim()
     ? data.localCurrencyName.trim()
     : ''
+  const companyData = isRecord(data.companyProfile) ? data.companyProfile : {}
+  const text = (value: unknown, maxLength: number) =>
+    typeof value === 'string' ? value.slice(0, maxLength) : ''
+  const contacts = Array.isArray(companyData.contacts)
+    ? companyData.contacts.flatMap((contact) => {
+      if (!isRecord(contact)) return []
+      const name = text(contact.name, 60)
+      const phone = text(contact.phone, 30)
+      return name.trim() && phone.trim() ? [{ name, phone }] : []
+    }).slice(0, 3)
+    : []
   return {
     syriaEnabled: data.syriaEnabled === true,
     exchangeRate,
     darkMode: data.darkMode === true,
     localCurrencyCode,
     localCurrencyName,
+    companyProfile: {
+      name: text(companyData.name, 100),
+      offerings: text(companyData.offerings, 300),
+      details: text(companyData.details, 500),
+      address: text(companyData.address, 200),
+      contacts,
+    },
   }
 }
 
@@ -525,6 +553,12 @@ export async function readBackupArchive(file: File): Promise<ValidatedBackup> {
   const expectedSettingsCount = settingsFields.length * 2
     + (payload.invoiceCounter === null ? 0 : 1)
     + (payload.cloudinarySettings ? 2 : 0)
+  const legacySettingsCount = legacySettingsFields.length * 2
+    + (payload.invoiceCounter === null ? 0 : 1)
+    + (payload.cloudinarySettings ? 2 : 0)
+  const hasCompanyProfile = isRecord(payloadValue)
+    && ((isRecord(payloadValue.userSettings) && 'companyProfile' in payloadValue.userSettings)
+      || (isRecord(payloadValue.localSettings) && 'companyProfile' in payloadValue.localSettings))
   if (manifestValue.references.products !== 'users/{dataUserId}/products/{productId}'
     || manifestValue.references.categories !== 'users/{dataUserId}/categories/{categoryId}'
     || manifestValue.references.categoryField !== 'products.categoryId -> categories.documentId'
@@ -533,7 +567,8 @@ export async function readBackupArchive(file: File): Promise<ValidatedBackup> {
     || manifestValue.references.cloudinarySettings !== 'users/{dataUserId}/cloudinarySettings/{authUid}'
     || manifestValue.counts.products !== payload.products.length
     || manifestValue.counts.categories !== payload.categories.length
-    || manifestValue.counts.settings !== expectedSettingsCount
+    || (manifestValue.counts.settings !== expectedSettingsCount
+      && (hasCompanyProfile || manifestValue.counts.settings !== legacySettingsCount))
     || typeof manifestValue.appVersion !== 'string') {
     throw operationError('ملخص النسخة لا يطابق البيانات الموجودة داخلها.')
   }

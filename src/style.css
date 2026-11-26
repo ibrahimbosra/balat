@@ -903,6 +903,8 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   overflow: hidden;
 }
 .modal:has(.settings-tabs) {
+  display: flex;
+  flex-direction: column;
   width: min(calc(100vw - 24px), 620px);
   height: min(820px, calc(100dvh - 24px));
   max-height: calc(100dvh - 24px);
@@ -926,7 +928,8 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   margin-bottom: 18px;
 }
 .modal:has(.settings-tabs) #settings-content {
-  height: calc(100% - 104px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 2px 2px 8px;
 }
@@ -1037,10 +1040,31 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .hidden { display: none !important; }
 [hidden] { display: none !important; }
 .settings-tabs, .export-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin: -5px 0 20px; padding-bottom: 8px; }
-.settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+.settings-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 100%; }
 .settings-tabs button, .export-tabs button { min-width: 0; min-height: 44px; border-radius: 9px; background: #f1f4f5; color: var(--muted); font-size: 13px; font-weight: 800; white-space: nowrap; }
 .settings-tabs button { width: 100%; }
 .settings-tabs button.active, .export-tabs button.active { background: #e3f1ef; color: var(--teal); box-shadow: inset 0 0 0 1px #b7d9d4; }
+.settings-page { display: grid; align-content: start; gap: 12px; }
+.settings-subtabs { display: flex; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.settings-subtabs button { min-height: 38px; padding: 0 14px; border-radius: 9px; background: #e3f1ef; color: var(--teal); font-size: 12px; font-weight: 800; }
+.settings-form { display: grid; gap: 12px; }
+.settings-section { display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 15px; background: #fff; padding: 16px; }
+.settings-section-heading { display: grid; gap: 4px; }
+.settings-section-heading h2 { margin: 0; font-size: 17px; }
+.settings-section-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.settings-fields > label { display: grid; align-content: start; gap: 6px; min-width: 0; font-size: 12px; }
+.settings-fields > label:has(textarea) { grid-column: 1 / -1; }
+.settings-fields textarea { resize: vertical; min-height: 82px; }
+.settings-fields input[readonly] { background: #f3f6f7; color: var(--muted); }
+.settings-fields small { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.settings-contact-list { display: grid; gap: 10px; }
+.settings-contact-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px; align-items: end; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.settings-contact-row label { display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+.settings-remove-contact { min-height: 42px; padding: 0 8px; white-space: nowrap; }
+.settings-add-contact { justify-self: start; min-height: 40px; }
+.settings-status { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.settings-status.is-error { color: var(--coral); }
 #export-invoice-panel {
   display: grid;
   grid-template-rows: minmax(0,1fr) auto;
@@ -2824,6 +2848,14 @@ body.dark-mode .settings-tabs button,
 body.dark-mode .export-tabs button { background: #202d37; color: #aab8c5; }
 body.dark-mode .settings-tabs button.active,
 body.dark-mode .export-tabs button.active { background: #193b3a; color: #7de0d3; }
+body.dark-mode .settings-section,
+body.dark-mode .settings-contact-row { border-color: #2b3b49; background: #18232d; }
+body.dark-mode .settings-subtabs { border-bottom-color: #2b3b49; }
+body.dark-mode .settings-subtabs button { background: #193b3a; color: #7de0d3; }
+body.dark-mode .settings-section-heading p,
+body.dark-mode .settings-status { color: #aab8c5; }
+body.dark-mode .settings-status.is-error { color: #ff8c8c; }
+body.dark-mode .settings-fields input[readonly] { border-color: #2b3b49; background: #202d37; color: #aab8c5; }
 body.dark-mode .modal-close {
   border-color: #35505f;
   background: #253441;
@@ -2979,7 +3011,9 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     margin-top: 22px;
   }
   .modal:has(.settings-tabs) #settings-content {
-    height: calc(100% - 112px);
+    height: auto;
+    flex: 1;
+    min-height: 0;
   }
   .modal:has(.export-tabs) {
     width: 100%;
@@ -2998,9 +3032,14 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   .modal:has(.export-tabs) #export-invoice-panel {
     height: calc(100% - 150px);
   }
-  .settings-tabs { gap: 4px; margin-bottom: 14px; }
-  .settings-tabs button { min-height: 48px; padding: 5px 3px; font-size: 11px; line-height: 1.25; }
+  .settings-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 14px; }
+  .settings-tabs button { min-height: 44px; padding: 5px 3px; font-size: 11px; line-height: 1.25; white-space: normal; }
   .backup-actions { grid-template-columns: 1fr; gap: 8px; }
+  .settings-section { padding: 13px; }
+  .settings-fields { grid-template-columns: 1fr; }
+  .settings-fields > label:has(textarea) { grid-column: auto; }
+  .settings-contact-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .settings-remove-contact { grid-column: 1 / -1; justify-self: end; min-height: 34px; }
   .export-service-row { grid-template-columns: 1fr; }
   .export-price-field { min-width: 0; }
   .export-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }

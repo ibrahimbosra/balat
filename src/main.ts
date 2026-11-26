@@ -1,13 +1,16 @@
 import './style.css'
 import { initializeApp } from 'firebase/app'
 import {
+  EmailAuthProvider,
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   setPersistence,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   type User,
 } from 'firebase/auth'
 import {
@@ -56,6 +59,26 @@ type AppSettings = {
   darkMode: boolean
   localCurrencyCode: string
   localCurrencyName: string
+  companyProfile: CompanyProfile
+}
+
+type CompanyContact = {
+  name: string
+  phone: string
+}
+
+type CompanyProfile = {
+  name: string
+  offerings: string
+  details: string
+  address: string
+  contacts: CompanyContact[]
+}
+
+type AccountProfile = {
+  firstName: string
+  lastName: string
+  phone: string
 }
 
 type WorkService = {
@@ -158,6 +181,7 @@ const defaultSettings: AppSettings = {
   darkMode: true,
   localCurrencyCode: 'ليرة',
   localCurrencyName: 'ليرة',
+  companyProfile: { name: '', offerings: '', details: '', address: '', contacts: [] },
 }
 
 let currentUser: User | null = null
@@ -222,6 +246,31 @@ function safeSettings(value: unknown): AppSettings {
     darkMode: typeof data.darkMode === 'boolean' ? data.darkMode : true,
     localCurrencyCode: 'ليرة',
     localCurrencyName: 'ليرة',
+    companyProfile: safeCompanyProfile(data.companyProfile),
+  }
+}
+
+function safeCompanyProfile(value: unknown): CompanyProfile {
+  const data = typeof value === 'object' && value !== null
+    ? value as Partial<CompanyProfile>
+    : {}
+  const text = (value: unknown, maxLength: number) =>
+    typeof value === 'string' ? value.slice(0, maxLength) : ''
+  const contacts = Array.isArray(data.contacts)
+    ? data.contacts.flatMap((contact) => {
+      if (typeof contact !== 'object' || contact === null || Array.isArray(contact)) return []
+      const item = contact as Partial<CompanyContact>
+      const name = text(item.name, 60)
+      const phone = text(item.phone, 30)
+      return name.trim() || phone.trim() ? [{ name, phone }] : []
+    }).slice(0, 3)
+    : []
+  return {
+    name: text(data.name, 100),
+    offerings: text(data.offerings, 300),
+    details: text(data.details, 500),
+    address: text(data.address, 200),
+    contacts,
   }
 }
 
@@ -2634,25 +2683,334 @@ function renderSettings() {
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     <p class="eyebrow">إعدادات التطبيق</p>
-    <div class="settings-tabs">
-      <button class="active" data-settings-tab="currency">العملة</button>
-      <button data-settings-tab="system">النظام</button>
-      <button data-settings-tab="backup">نسخ احتياطي</button>
+    <div class="settings-tabs" role="tablist" aria-label="إعدادات التطبيق">
+      <button class="active" role="tab" aria-selected="true" data-settings-tab="currency">العملة</button>
+      <button role="tab" aria-selected="false" data-settings-tab="system">النظام</button>
+      <button role="tab" aria-selected="false" data-settings-tab="backup">نسخ احتياطي</button>
+      <button role="tab" aria-selected="false" data-settings-tab="preferences">التفضيلات</button>
+      <button role="tab" aria-selected="false" data-settings-tab="account">الحساب</button>
     </div>
     <div id="settings-content"></div>`)
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
   const content = element.querySelector<HTMLElement>('#settings-content')!
-  const renderTab = (tab: 'currency' | 'system' | 'backup') => {
-    element.querySelectorAll<HTMLButtonElement>('[data-settings-tab]').forEach((button) =>
-      button.classList.toggle('active', button.dataset.settingsTab === tab))
+  const renderTab = (tab: 'currency' | 'system' | 'backup' | 'preferences' | 'account') => {
+    element.querySelectorAll<HTMLButtonElement>('[data-settings-tab]').forEach((button) => {
+      const selected = button.dataset.settingsTab === tab
+      button.classList.toggle('active', selected)
+      button.setAttribute('aria-selected', String(selected))
+    })
     if (tab === 'currency') renderCurrencySettings(content, element)
     if (tab === 'system') renderSystemSettings(content)
     if (tab === 'backup') renderBackupSettings(content)
+    if (tab === 'preferences') renderPreferencesSettings(content)
+    if (tab === 'account') renderAccountSettings(content)
   }
   element.querySelectorAll<HTMLButtonElement>('[data-settings-tab]').forEach((button) => {
-    button.addEventListener('click', () => renderTab(button.dataset.settingsTab as 'currency' | 'system' | 'backup'))
+    button.addEventListener('click', () =>
+      renderTab(button.dataset.settingsTab as 'currency' | 'system' | 'backup' | 'preferences' | 'account'))
   })
   renderTab('currency')
+}
+
+function renderPreferencesSettings(content: HTMLElement) {
+  const profile = safeCompanyProfile(settings.companyProfile)
+  let contacts = profile.contacts
+  content.innerHTML = `
+    <section class="settings-page">
+      <div class="settings-subtabs" role="tablist" aria-label="تبويبات التفضيلات">
+        <button class="active" type="button" role="tab" aria-selected="true">بيانات الشركة</button>
+      </div>
+      <form id="company-profile-form" class="settings-form">
+        <section class="settings-section">
+          <div class="settings-section-heading">
+            <h2>بيانات الشركة</h2>
+            <p>تُستخدم هذه البيانات لتعريف شركتك في إعدادات التطبيق.</p>
+          </div>
+          <div class="settings-fields">
+            <label>اسم الشركة
+              <input name="companyName" maxlength="100" value="${escapeHtml(profile.name)}" placeholder="اسم الشركة أو الورشة">
+            </label>
+            <label>ماذا تقدم الشركة
+              <textarea name="companyOfferings" maxlength="300" rows="2" placeholder="مثل: خدمات البلاط والسيراميك والرخام">${escapeHtml(profile.offerings)}</textarea>
+            </label>
+            <label>العنوان
+              <input name="companyAddress" maxlength="200" value="${escapeHtml(profile.address)}" placeholder="عنوان الشركة">
+            </label>
+            <label>تفاصيل الشركة
+              <textarea name="companyDetails" maxlength="500" rows="3" placeholder="نبذة أو تفاصيل إضافية">${escapeHtml(profile.details)}</textarea>
+            </label>
+          </div>
+        </section>
+        <section class="settings-section">
+          <div class="settings-section-heading">
+            <h2>هواتف التواصل الخاصة بالشركة</h2>
+            <p>أضف حتى 3 أرقام، مع اسم صاحب كل رقم.</p>
+          </div>
+          <div id="company-contacts" class="settings-contact-list"></div>
+          <button class="secondary-button settings-add-contact" id="add-company-contact" type="button">إضافة هاتف</button>
+        </section>
+        <p class="settings-status" id="company-profile-status" role="status" aria-live="polite"></p>
+        <button class="primary-button" id="save-company-profile" type="submit">حفظ بيانات الشركة</button>
+      </form>
+    </section>`
+
+  const list = content.querySelector<HTMLElement>('#company-contacts')!
+  const addButton = content.querySelector<HTMLButtonElement>('#add-company-contact')!
+  const status = content.querySelector<HTMLElement>('#company-profile-status')!
+  const renderContacts = () => {
+    list.innerHTML = contacts.map((contact, index) => `
+      <div class="settings-contact-row" data-contact-index="${index}">
+        <label>الاسم
+          <input data-contact-name="${index}" maxlength="60" value="${escapeHtml(contact.name)}" placeholder="اسم الشخص">
+        </label>
+        <label>رقم الهاتف
+          <input data-contact-phone="${index}" type="tel" inputmode="tel" maxlength="30" value="${escapeHtml(contact.phone)}" placeholder="رقم الهاتف">
+        </label>
+        <button class="text-button settings-remove-contact" type="button" data-remove-contact="${index}" aria-label="إزالة رقم التواصل">إزالة</button>
+      </div>`).join('')
+    addButton.disabled = contacts.length >= 3
+  }
+  renderContacts()
+  addButton.addEventListener('click', () => {
+    if (contacts.length >= 3) return
+    contacts = [...contacts, { name: '', phone: '' }]
+    renderContacts()
+    list.querySelector<HTMLInputElement>(`[data-contact-name="${contacts.length - 1}"]`)?.focus()
+  })
+  list.addEventListener('input', (event) => {
+    if (!(event.target instanceof HTMLInputElement)) return
+    const index = Number(event.target.dataset.contactName ?? event.target.dataset.contactPhone)
+    if (!Number.isInteger(index) || !contacts[index]) return
+    if (event.target.dataset.contactName !== undefined) contacts[index].name = event.target.value
+    if (event.target.dataset.contactPhone !== undefined) contacts[index].phone = event.target.value
+  })
+  list.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return
+    const removeButton = event.target.closest<HTMLButtonElement>('[data-remove-contact]')
+    if (!removeButton) return
+    const index = Number(removeButton.dataset.removeContact)
+    if (!Number.isInteger(index) || !contacts[index]) return
+    contacts = contacts.filter((_, contactIndex) => contactIndex !== index)
+    renderContacts()
+  })
+  content.querySelector<HTMLFormElement>('#company-profile-form')!.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const user = currentUser
+    const ownerId = dataUserId
+    if (!user || !ownerId) return
+    const form = event.currentTarget as HTMLFormElement
+    const incompleteContact = contacts.some((contact) =>
+      Boolean(contact.name.trim()) !== Boolean(contact.phone.trim()))
+    if (incompleteContact) {
+      status.textContent = 'أدخل اسم ورقم هاتف لكل شخص، أو احذف جهة الاتصال غير المكتملة.'
+      status.classList.add('is-error')
+      return
+    }
+    const formData = new FormData(form)
+    const companyProfile = safeCompanyProfile({
+      name: String(formData.get('companyName') || '').trim(),
+      offerings: String(formData.get('companyOfferings') || '').trim(),
+      details: String(formData.get('companyDetails') || '').trim(),
+      address: String(formData.get('companyAddress') || '').trim(),
+      contacts: contacts
+        .filter((contact) => contact.name.trim() && contact.phone.trim())
+        .map((contact) => ({ name: contact.name.trim(), phone: contact.phone.trim() })),
+    })
+    const submit = content.querySelector<HTMLButtonElement>('#save-company-profile')!
+    submit.disabled = true
+    status.classList.remove('is-error')
+    status.textContent = 'جارٍ حفظ بيانات الشركة...'
+    try {
+      await setDoc(doc(db, 'users', ownerId), { companyProfile }, { merge: true })
+      if (currentUser?.uid !== user.uid || dataUserId !== ownerId) return
+      settings = { ...settings, companyProfile }
+      try {
+        saveCachedSettings(ownerId, settings)
+        status.textContent = 'تم حفظ بيانات الشركة بنجاح.'
+      } catch (cacheError) {
+        console.error('Company profile was saved remotely but the local cache could not be updated.', cacheError)
+        status.textContent = 'حُفظت بيانات الشركة على الحساب، لكن تعذر تحديث النسخة المحلية.'
+        status.classList.add('is-error')
+      }
+    } catch (saveError) {
+      status.textContent = friendlyError(saveError)
+      status.classList.add('is-error')
+    } finally {
+      submit.disabled = false
+    }
+  })
+}
+
+function renderAccountSettings(content: HTMLElement) {
+  const user = currentUser
+  if (!user) return
+  const ownerId = dataUserId
+  const nameParts = (user.displayName || '').trim().split(/\s+/).filter(Boolean)
+  const initialProfile: AccountProfile = {
+    firstName: nameParts[0] || '',
+    lastName: nameParts.slice(1).join(' '),
+    phone: user.phoneNumber || '',
+  }
+  content.innerHTML = `
+    <section class="settings-page">
+      <section class="settings-section">
+        <div class="settings-section-heading">
+          <h2>بيانات الحساب</h2>
+          <p>حدّث بياناتك الشخصية المرتبطة بهذا الحساب.</p>
+        </div>
+        <form id="account-profile-form" class="settings-form">
+          <div class="settings-fields account-profile-fields">
+            <label>الاسم
+              <input name="firstName" maxlength="60" value="${escapeHtml(initialProfile.firstName)}" autocomplete="given-name" required>
+            </label>
+            <label>اللقب
+              <input name="lastName" maxlength="60" value="${escapeHtml(initialProfile.lastName)}" autocomplete="family-name">
+            </label>
+            <label>رقم الهاتف
+              <input name="phone" type="tel" inputmode="tel" maxlength="30" value="${escapeHtml(initialProfile.phone)}" autocomplete="tel">
+            </label>
+            <label>البريد الإلكتروني
+              <input type="email" value="${escapeHtml(user.email || '')}" readonly aria-describedby="account-email-note">
+              <small id="account-email-note">البريد الإلكتروني مرتبط بتسجيل الدخول ولا يمكن تغييره من هنا.</small>
+            </label>
+          </div>
+          <p class="settings-status" id="account-profile-status" role="status" aria-live="polite">جارٍ تحميل بيانات الحساب...</p>
+          <button class="primary-button" id="save-account-profile" type="submit">حفظ بيانات الحساب</button>
+        </form>
+      </section>
+      <section class="settings-section">
+        <div class="settings-section-heading">
+          <h2>تغيير كلمة المرور</h2>
+          <p>أدخل كلمة المرور الحالية، ثم كلمة المرور الجديدة مرتين.</p>
+        </div>
+        <form id="account-password-form" class="settings-form">
+          <div class="settings-fields">
+            <label>كلمة المرور الحالية
+              <input name="currentPassword" type="password" autocomplete="current-password" required>
+            </label>
+            <label>كلمة المرور الجديدة
+              <input name="newPassword" type="password" autocomplete="new-password" minlength="6" required>
+            </label>
+            <label>تأكيد كلمة المرور الجديدة
+              <input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required>
+            </label>
+          </div>
+          <p class="settings-status" id="account-password-status" role="status" aria-live="polite"></p>
+          <button class="primary-button" id="change-account-password" type="submit">تغيير كلمة المرور</button>
+        </form>
+      </section>
+    </section>`
+
+  const profileForm = content.querySelector<HTMLFormElement>('#account-profile-form')!
+  const profileStatus = content.querySelector<HTMLElement>('#account-profile-status')!
+  let profileTouched = false
+  let profileSaving = false
+  profileForm.addEventListener('input', () => { profileTouched = true })
+  const profileReference = doc(db, 'users', ownerId, 'accountProfiles', user.uid)
+  void getDoc(profileReference).then((snapshot) => {
+    if (currentUser?.uid !== user.uid || dataUserId !== ownerId || !content.isConnected) return
+    if (!profileTouched && snapshot.exists()) {
+      const saved = snapshot.data()
+      const firstName = typeof saved.firstName === 'string' ? saved.firstName : initialProfile.firstName
+      const lastName = typeof saved.lastName === 'string' ? saved.lastName : initialProfile.lastName
+      const phone = typeof saved.phone === 'string' ? saved.phone : initialProfile.phone
+      profileForm.querySelector<HTMLInputElement>('[name="firstName"]')!.value = firstName
+      profileForm.querySelector<HTMLInputElement>('[name="lastName"]')!.value = lastName
+      profileForm.querySelector<HTMLInputElement>('[name="phone"]')!.value = phone
+    }
+    if (!profileSaving) profileStatus.textContent = ''
+  }).catch((loadError: unknown) => {
+    if (content.isConnected && !profileSaving) {
+      profileStatus.textContent = `تعذر تحميل بيانات الحساب: ${friendlyError(loadError)}`
+      profileStatus.classList.add('is-error')
+    }
+  })
+
+  profileForm.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const form = event.currentTarget as HTMLFormElement
+    const formData = new FormData(form)
+    const profile: AccountProfile = {
+      firstName: String(formData.get('firstName') || '').trim(),
+      lastName: String(formData.get('lastName') || '').trim(),
+      phone: String(formData.get('phone') || '').trim(),
+    }
+    if (!profile.firstName) {
+      profileStatus.textContent = 'أدخل الاسم قبل الحفظ.'
+      profileStatus.classList.add('is-error')
+      return
+    }
+    const submit = content.querySelector<HTMLButtonElement>('#save-account-profile')!
+    profileSaving = true
+    submit.disabled = true
+    profileStatus.classList.remove('is-error')
+    profileStatus.textContent = 'جارٍ حفظ بيانات الحساب...'
+    try {
+      await setDoc(profileReference, profile, { merge: true })
+      if (currentUser?.uid !== user.uid || dataUserId !== ownerId) return
+      profileStatus.textContent = 'تم حفظ بيانات الحساب بنجاح.'
+    } catch (saveError) {
+      profileStatus.textContent = friendlyError(saveError)
+      profileStatus.classList.add('is-error')
+    } finally {
+      profileSaving = false
+      submit.disabled = false
+    }
+  })
+
+  const passwordForm = content.querySelector<HTMLFormElement>('#account-password-form')!
+  const passwordStatus = content.querySelector<HTMLElement>('#account-password-status')!
+  passwordForm.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const currentPassword = String(new FormData(passwordForm).get('currentPassword') || '')
+    const newPassword = String(new FormData(passwordForm).get('newPassword') || '')
+    const confirmPassword = String(new FormData(passwordForm).get('confirmPassword') || '')
+    if (newPassword !== confirmPassword) {
+      passwordStatus.textContent = 'كلمتا المرور الجديدتان غير متطابقتين.'
+      passwordStatus.classList.add('is-error')
+      return
+    }
+    if (newPassword === currentPassword) {
+      passwordStatus.textContent = 'اختر كلمة مرور جديدة مختلفة عن الحالية.'
+      passwordStatus.classList.add('is-error')
+      return
+    }
+    if (!user.email || !user.providerData.some((provider) => provider.providerId === 'password')) {
+      passwordStatus.textContent = 'تغيير كلمة المرور غير متاح لهذا النوع من الحسابات.'
+      passwordStatus.classList.add('is-error')
+      return
+    }
+    const submit = content.querySelector<HTMLButtonElement>('#change-account-password')!
+    submit.disabled = true
+    passwordStatus.classList.remove('is-error')
+    passwordStatus.textContent = 'جارٍ تحديث كلمة المرور...'
+    try {
+      const credential = EmailAuthProvider.credential(user.email, currentPassword)
+      await reauthenticateWithCredential(user, credential)
+      if (currentUser?.uid !== user.uid) return
+      await updatePassword(user, newPassword)
+      passwordForm.reset()
+      passwordStatus.textContent = 'تم تغيير كلمة المرور بنجاح.'
+    } catch (passwordError) {
+      passwordStatus.textContent = accountPasswordError(passwordError)
+      passwordStatus.classList.add('is-error')
+    } finally {
+      submit.disabled = false
+    }
+  })
+}
+
+function accountPasswordError(error: unknown): string {
+  const code = typeof error === 'object' && error && 'code' in error
+    ? String((error as { code: string }).code)
+    : ''
+  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+    return 'كلمة المرور الحالية غير صحيحة.'
+  }
+  if (code === 'auth/weak-password') return 'كلمة المرور الجديدة ضعيفة؛ استخدم كلمة مرور أقوى.'
+  if (code === 'auth/requires-recent-login') return 'انتهت صلاحية التحقق؛ سجّل الدخول مجددًا ثم حاول مرة أخرى.'
+  if (code === 'auth/network-request-failed') return 'تعذر الاتصال بالشبكة؛ تحقق من اتصالك وحاول مجددًا.'
+  return friendlyError(error)
 }
 
 function renderCurrencySettings(content: HTMLElement, element: HTMLElement) {
@@ -2728,6 +3086,7 @@ function renderBackupSettings(content: HTMLElement) {
         darkMode: settings.darkMode,
         localCurrencyCode: settings.localCurrencyCode,
         localCurrencyName: settings.localCurrencyName,
+        companyProfile: settings.companyProfile,
       })
       const url = URL.createObjectURL(archive)
       const link = document.createElement('a')
