@@ -1,4 +1,4 @@
-﻿import './style.css'
+import './style.css'
 import { initializeApp } from 'firebase/app'
 import {
   browserLocalPersistence,
@@ -1025,6 +1025,7 @@ async function exportCustomerAccountStatementA4(
       if (!context) throw new Error('Canvas is unavailable')
       context.scale(scale, scale)
       context.textBaseline = 'middle'
+      context.direction = 'rtl'
       context.fillStyle = '#f4f7f6'
       context.fillRect(0, 0, width, height)
       context.fillStyle = teal
