@@ -10,6 +10,7 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore'
+import { normalizeMeasurementUnits, type MeasurementUnit } from './measurement-units'
 
 export type BackupSettings = {
   syriaEnabled: boolean
@@ -18,6 +19,7 @@ export type BackupSettings = {
   localCurrencyCode: string
   localCurrencyName: string
   companyProfile: BackupCompanyProfile
+  measurementUnits: MeasurementUnit[]
 }
 
 type BackupCompanyProfile = {
@@ -111,7 +113,7 @@ const legacySettingsFields: (keyof BackupSettings)[] = [
   'localCurrencyCode',
   'localCurrencyName',
 ]
-const settingsFields: (keyof BackupSettings)[] = [...legacySettingsFields, 'companyProfile']
+const settingsFields: (keyof BackupSettings)[] = [...legacySettingsFields, 'companyProfile', 'measurementUnits']
 
 declare const __APP_VERSION__: string
 
@@ -158,6 +160,7 @@ function normalizedSettings(value: unknown): BackupSettings {
       address: text(companyData.address, 200),
       contacts,
     },
+    measurementUnits: normalizeMeasurementUnits(data.measurementUnits),
   }
 }
 
@@ -553,12 +556,21 @@ export async function readBackupArchive(file: File): Promise<ValidatedBackup> {
   const expectedSettingsCount = settingsFields.length * 2
     + (payload.invoiceCounter === null ? 0 : 1)
     + (payload.cloudinarySettings ? 2 : 0)
+  const previousSettingsCount = (legacySettingsFields.length + 1) * 2
+    + (payload.invoiceCounter === null ? 0 : 1)
+    + (payload.cloudinarySettings ? 2 : 0)
   const legacySettingsCount = legacySettingsFields.length * 2
     + (payload.invoiceCounter === null ? 0 : 1)
     + (payload.cloudinarySettings ? 2 : 0)
   const hasCompanyProfile = isRecord(payloadValue)
     && ((isRecord(payloadValue.userSettings) && 'companyProfile' in payloadValue.userSettings)
       || (isRecord(payloadValue.localSettings) && 'companyProfile' in payloadValue.localSettings))
+  const hasMeasurementUnits = isRecord(payloadValue)
+    && ((isRecord(payloadValue.userSettings) && 'measurementUnits' in payloadValue.userSettings)
+      || (isRecord(payloadValue.localSettings) && 'measurementUnits' in payloadValue.localSettings))
+  const settingsCountMatches = manifestValue.counts.settings === expectedSettingsCount
+    || (!hasMeasurementUnits
+      && manifestValue.counts.settings === (hasCompanyProfile ? previousSettingsCount : legacySettingsCount))
   if (manifestValue.references.products !== 'users/{dataUserId}/products/{productId}'
     || manifestValue.references.categories !== 'users/{dataUserId}/categories/{categoryId}'
     || manifestValue.references.categoryField !== 'products.categoryId -> categories.documentId'
@@ -567,8 +579,7 @@ export async function readBackupArchive(file: File): Promise<ValidatedBackup> {
     || manifestValue.references.cloudinarySettings !== 'users/{dataUserId}/cloudinarySettings/{authUid}'
     || manifestValue.counts.products !== payload.products.length
     || manifestValue.counts.categories !== payload.categories.length
-    || (manifestValue.counts.settings !== expectedSettingsCount
-      && (hasCompanyProfile || manifestValue.counts.settings !== legacySettingsCount))
+    || !settingsCountMatches
     || typeof manifestValue.appVersion !== 'string') {
     throw operationError('ملخص النسخة لا يطابق البيانات الموجودة داخلها.')
   }

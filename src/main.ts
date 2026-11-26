@@ -36,6 +36,7 @@ import {
   type RestoreMode,
   type ValidatedBackup,
 } from './user-backup'
+import { normalizeMeasurementUnits, systemMeasurementUnits, type MeasurementUnit } from './measurement-units'
 import { openUsagePolicyDialog } from './privacy-policy'
 
 const firebaseConfig = {
@@ -52,7 +53,7 @@ const auth = getAuth()
 const db = getFirestore()
 const appRoot = document.querySelector<HTMLDivElement>('#app')!
 
-type ServiceUnit = 'SQM' | 'LM' | 'CBM' | 'PCS' | 'LOT' | 'PROJECT' | 'GROUP'
+type ServiceUnit = string
 
 type AppSettings = {
   syriaEnabled: boolean
@@ -61,6 +62,7 @@ type AppSettings = {
   localCurrencyCode: string
   localCurrencyName: string
   companyProfile: CompanyProfile
+  measurementUnits: MeasurementUnit[]
 }
 
 type CompanyContact = {
@@ -182,6 +184,7 @@ const defaultSettings: AppSettings = {
   localCurrencyCode: 'ليرة',
   localCurrencyName: 'ليرة',
   companyProfile: { name: '', offerings: '', details: '', address: '', contacts: [] },
+  measurementUnits: systemMeasurementUnits,
 }
 
 let currentUser: User | null = null
@@ -249,6 +252,7 @@ function safeSettings(value: unknown): AppSettings {
     localCurrencyCode: 'ليرة',
     localCurrencyName: 'ليرة',
     companyProfile: safeCompanyProfile(data.companyProfile),
+    measurementUnits: normalizeMeasurementUnits(data.measurementUnits),
   }
 }
 
@@ -330,21 +334,7 @@ function resolveDataUserId(user: User): string {
 function parseWorkService(id: string, data: Record<string, unknown>): WorkService | null {
   const name = typeof data.name === 'string' ? data.name.trim() : ''
   const price = typeof data.price === 'number' && Number.isFinite(data.price) && data.price >= 0 ? data.price : NaN
-  const unit = data.unit === 'CBM'
-    ? 'CBM'
-    : data.unit === 'PCS'
-      ? 'PCS'
-      : data.unit === 'LOT'
-        ? 'LOT'
-        : data.unit === 'PROJECT'
-          ? 'PROJECT'
-          : data.unit === 'GROUP'
-            ? 'GROUP'
-            : data.unit === 'LM'
-              ? 'LM'
-              : data.unit === 'SQM'
-                ? 'SQM'
-                : null
+  const unit = typeof data.unit === 'string' && data.unit.trim() ? data.unit.trim() : null
   if (!name || !unit || !Number.isFinite(price)) return null
   return {
     id,
@@ -513,7 +503,7 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
     !(entry && typeof entry === 'object' && (entry as Record<string, unknown>).cancelled === true),
   ).map((entry) => {
     const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {}
-    const unitCode: ServiceUnit | null = item.unitCode === 'CBM' || item.unitCode === 'PCS' || item.unitCode === 'LOT' || item.unitCode === 'PROJECT' || item.unitCode === 'GROUP' || item.unitCode === 'LM' || item.unitCode === 'SQM'
+    const unitCode: ServiceUnit | null = typeof item.unitCode === 'string' && item.unitCode.trim()
       ? item.unitCode
       : null
     return {
@@ -579,13 +569,14 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
 }
 
 function serviceUnitLabel(unit: ServiceUnit): string {
-  if (unit === 'SQM') return 'متر مربع'
-  if (unit === 'LM') return 'متر جر'
-  if (unit === 'CBM') return 'متر مكعب'
-  if (unit === 'PCS') return 'قطعة / عدد'
-  if (unit === 'LOT') return 'مقطوعية'
-  if (unit === 'PROJECT') return 'مشروع'
-  return 'مجموعة'
+  const registeredUnit = settings.measurementUnits.find((item) => item.id === unit)
+  if (registeredUnit) return registeredUnit.name
+  const legacyLabels: Record<string, string> = {
+    PCS: 'قطعة / عدد',
+    PROJECT: 'مشروع',
+    GROUP: 'مجموعة',
+  }
+  return legacyLabels[unit] || 'وحدة غير مسجلة'
 }
 
 function modal(content: string, options: { preserveExisting?: boolean } = {}) {
@@ -2651,6 +2642,30 @@ function renderInvoiceVersionsDialog(rootId: string) {
 
 function renderServiceEditor(existing?: WorkService) {
   if (!currentUser) return
+  const defaultUnits = settings.measurementUnits.filter((unit) => unit.isDefault)
+  if (!existing && !defaultUnits.length) {
+    showToast('فعّل وحدة قياس واحدة على الأقل من تبويب وحدات القياس قبل إضافة خدمة.')
+    return
+  }
+  const initialUnit = existing?.unit
+    || defaultUnits.find((unit) => unit.id === 'SQM')?.id
+    || defaultUnits[0]?.id
+    || ''
+  const unitOptions = [...defaultUnits]
+  if (existing && !unitOptions.some((unit) => unit.id === existing.unit)) {
+    const registered = settings.measurementUnits.find((unit) => unit.id === existing.unit)
+    unitOptions.push(registered || {
+      id: existing.unit,
+      name: serviceUnitLabel(existing.unit),
+      isDefault: false,
+      isSystem: false,
+    })
+  }
+  const unitOptionsMarkup = unitOptions.map((unit, index) => `
+    <button type="button" class="custom-select-option ${index >= 2 ? 'custom-select-extra' : ''}" role="option" data-value="${escapeHtml(unit.id)}" data-label="${escapeHtml(unit.name)}" ${index >= 2 ? 'hidden' : ''}>${escapeHtml(unit.name)}</button>`).join('')
+  const moreUnitsMarkup = unitOptions.length > 2
+    ? '<button type="button" class="custom-select-more" aria-expanded="false">عرض المزيد من وحدات القياس</button>'
+    : ''
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     <p class="eyebrow">${existing ? 'تعديل الخدمة' : 'خدمة جديدة'}</p>
@@ -2658,23 +2673,17 @@ function renderServiceEditor(existing?: WorkService) {
     <form id="service-form" class="service-form">
       <label>اسم الخدمة<input name="name" maxlength="50" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="مثال: تركيب السيراميك"></label>
       <label>السعر<input name="price" type="number" min="0" step="0.01" inputmode="decimal" required value="${existing ? existing.price : ''}" placeholder="0.00"></label>
-      <div class="custom-select-field" data-custom-select="unit" data-selected="${existing?.unit || 'SQM'}">
+      <div class="custom-select-field" data-custom-select="unit" data-selected="${escapeHtml(initialUnit)}">
         <span class="custom-select-label-title">وحدة القياس</span>
         <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false">
           <span class="custom-select-value"></span>
           <svg class="custom-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
         </button>
         <div class="custom-select-menu" role="listbox" hidden>
-          <button type="button" class="custom-select-option" role="option" data-value="SQM" data-label="متر مربع">متر مربع</button>
-          <button type="button" class="custom-select-option" role="option" data-value="LM" data-label="متر جر">متر جر</button>
-          <button type="button" class="custom-select-more" aria-expanded="false">عرض المزيد من وحدات القياس</button>
-          <button type="button" class="custom-select-option custom-select-extra" role="option" data-value="CBM" data-label="متر مكعب" hidden>متر مكعب</button>
-          <button type="button" class="custom-select-option custom-select-extra" role="option" data-value="PCS" data-label="قطعة / عدد" hidden>قطعة / عدد</button>
-          <button type="button" class="custom-select-option custom-select-extra" role="option" data-value="LOT" data-label="مقطوعية" hidden>مقطوعية</button>
-          <button type="button" class="custom-select-option custom-select-extra" role="option" data-value="PROJECT" data-label="مشروع" hidden>مشروع</button>
-          <button type="button" class="custom-select-option custom-select-extra" role="option" data-value="GROUP" data-label="مجموعة" hidden>مجموعة</button>
+          ${unitOptionsMarkup}
+          ${moreUnitsMarkup}
         </div>
-        <input type="hidden" name="unit" value="${existing?.unit || 'SQM'}">
+        <input type="hidden" name="unit" value="${escapeHtml(initialUnit)}">
       </div>
       <label>الوصف الاختياري<textarea name="description" maxlength="300" rows="3" placeholder="تفاصيل الخدمة">${existing ? escapeHtml(existing.description) : ''}</textarea></label>
       <p class="modal-error" id="service-error"></p>
@@ -2763,7 +2772,9 @@ function renderServiceEditor(existing?: WorkService) {
     if (!name) { error.textContent = 'أدخل اسم الخدمة.'; return }
     if (name.length > 50) { error.textContent = 'يجب ألا يتجاوز اسم الخدمة 50 حرفًا.'; return }
     if (!Number.isFinite(price) || price < 0) { error.textContent = 'أدخل سعرًا صحيحًا.'; return }
-    if (!['SQM', 'LM', 'CBM', 'PCS', 'LOT', 'PROJECT', 'GROUP'].includes(unit)) {
+    const selectedUnit = settings.measurementUnits.find((item) => item.id === unit)
+    if ((!selectedUnit && (!existing || existing.unit !== unit))
+      || (selectedUnit && !selectedUnit.isDefault && (!existing || existing.unit !== unit))) {
       error.textContent = 'اختر وحدة القياس.'
       return
     }
@@ -2854,8 +2865,10 @@ function renderPreferencesSettings(content: HTMLElement) {
   content.innerHTML = `
     <section class="settings-page">
       <div class="settings-subtabs" role="tablist" aria-label="تبويبات التفضيلات">
-        <button class="active" type="button" role="tab" aria-selected="true">بيانات الشركة</button>
+        <button class="active" type="button" role="tab" aria-selected="true" data-preference-tab="company">بيانات الشركة</button>
+        <button type="button" role="tab" aria-selected="false" data-preference-tab="units">وحدات القياس</button>
       </div>
+      <div id="company-preferences-panel">
       <form id="company-profile-form" class="settings-form">
         <section class="settings-section">
           <div class="settings-section-heading">
@@ -2888,6 +2901,8 @@ function renderPreferencesSettings(content: HTMLElement) {
         <p class="settings-status" id="company-profile-status" role="status" aria-live="polite"></p>
         <button class="primary-button" id="save-company-profile" type="submit">حفظ بيانات الشركة</button>
       </form>
+      </div>
+      <div id="measurement-units-preferences-panel" hidden></div>
     </section>`
 
   const list = content.querySelector<HTMLElement>('#company-contacts')!
@@ -2975,6 +2990,223 @@ function renderPreferencesSettings(content: HTMLElement) {
       submit.disabled = false
     }
   })
+  const companyPanel = content.querySelector<HTMLElement>('#company-preferences-panel')!
+  const unitsPanel = content.querySelector<HTMLElement>('#measurement-units-preferences-panel')!
+  content.querySelectorAll<HTMLButtonElement>('[data-preference-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const showUnits = tab.dataset.preferenceTab === 'units'
+      content.querySelectorAll<HTMLButtonElement>('[data-preference-tab]').forEach((item) => {
+        const selected = item === tab
+        item.classList.toggle('active', selected)
+        item.setAttribute('aria-selected', String(selected))
+      })
+      companyPanel.hidden = showUnits
+      unitsPanel.hidden = !showUnits
+      if (showUnits) renderMeasurementUnitsSettings(unitsPanel)
+    })
+  })
+}
+
+async function persistMeasurementUnits(units: MeasurementUnit[], status: HTMLElement): Promise<boolean> {
+  const user = currentUser
+  const ownerId = dataUserId
+  if (!user || !ownerId) {
+    status.textContent = 'تعذر تحديد الحساب لحفظ وحدات القياس.'
+    status.classList.add('is-error')
+    return false
+  }
+  status.classList.remove('is-error')
+  status.textContent = 'جارٍ حفظ وحدات القياس...'
+  try {
+    await setDoc(doc(db, 'users', ownerId), { measurementUnits: units }, { merge: true })
+  } catch (saveError) {
+    console.error('Failed to save measurement units:', saveError)
+    status.textContent = friendlyError(saveError)
+    status.classList.add('is-error')
+    return false
+  }
+  if (currentUser?.uid !== user.uid || dataUserId !== ownerId) return false
+  settings = { ...settings, measurementUnits: normalizeMeasurementUnits(units) }
+  try {
+    saveCachedSettings(ownerId, settings)
+    status.textContent = 'تم حفظ وحدات القياس.'
+  } catch (cacheError) {
+    console.error('Measurement units were saved remotely but the local cache could not be updated.', cacheError)
+    status.textContent = 'حُفظت وحدات القياس على الحساب، لكن تعذر تحديث النسخة المحلية.'
+    status.classList.add('is-error')
+  }
+  updateServicesShell()
+  return true
+}
+
+function renderMeasurementUnitsSettings(content: HTMLElement) {
+  let units = normalizeMeasurementUnits(settings.measurementUnits)
+  let editingId: string | null = null
+  content.innerHTML = `
+    <div class="settings-page">
+      <section class="settings-section">
+        <div class="settings-section-heading">
+          <h2>إدارة وحدات القياس</h2>
+          <p>اختر الوحدات التي تظهر عند إضافة خدمة. تغيير اسم الوحدة يحدّث الخدمات، ولا يغيّر الاسم المحفوظ في الفواتير السابقة.</p>
+        </div>
+        <form id="measurement-unit-form" class="measurement-unit-form">
+          <label>اسم الوحدة
+            <input name="name" maxlength="15" required placeholder="مثال: صندوق">
+          </label>
+          <label class="measurement-unit-form-default">
+            <input name="isDefault" type="checkbox" checked>
+            <span>إظهارها في قائمة إضافة الخدمات</span>
+          </label>
+          <div class="measurement-unit-form-actions">
+            <button class="primary-button" type="submit" id="save-measurement-unit">إضافة الوحدة</button>
+            <button class="secondary-button" type="button" id="cancel-measurement-unit-edit" hidden>إلغاء التعديل</button>
+          </div>
+        </form>
+        <p class="settings-status" id="measurement-unit-status" role="status" aria-live="polite"></p>
+      </section>
+      <section class="settings-section">
+        <div class="settings-section-heading">
+          <h2>الوحدات المسجلة</h2>
+          <p>الوحدات الافتراضية لا يمكن حذفها. أزل ارتباط الوحدة بالخدمات قبل حذف وحدة مخصصة.</p>
+        </div>
+        <div class="measurement-unit-list" id="measurement-unit-list"></div>
+      </section>
+    </div>`
+
+  const form = content.querySelector<HTMLFormElement>('#measurement-unit-form')!
+  const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]')!
+  const defaultInput = form.querySelector<HTMLInputElement>('input[name="isDefault"]')!
+  const submit = form.querySelector<HTMLButtonElement>('#save-measurement-unit')!
+  const cancelEdit = form.querySelector<HTMLButtonElement>('#cancel-measurement-unit-edit')!
+  const status = content.querySelector<HTMLElement>('#measurement-unit-status')!
+  const list = content.querySelector<HTMLElement>('#measurement-unit-list')!
+  const renderList = () => {
+    list.innerHTML = units.map((unit) => {
+      const inUse = workServices.some((service) => service.unit === unit.id)
+      const cannotDelete = unit.isSystem || unit.isDefault || inUse
+      const deleteReason = unit.isSystem
+        ? 'وحدات النظام لا تحذف.'
+        : unit.isDefault
+          ? 'أوقف ظهور الوحدة في إضافة الخدمات قبل حذفها.'
+          : inUse
+            ? 'لا يمكن حذف وحدة مرتبطة بخدمة.'
+            : 'حذف الوحدة'
+      return `
+        <article class="measurement-unit-row">
+          <div class="measurement-unit-info">
+            <strong>${escapeHtml(unit.name)}</strong>
+            <small>${unit.isSystem ? 'وحدة أساسية' : `المعرّف: ${escapeHtml(unit.id)}`}</small>
+          </div>
+          <div class="measurement-unit-controls">
+            <label class="measurement-unit-toggle">
+              <input type="checkbox" data-unit-default="${escapeHtml(unit.id)}" ${unit.isDefault ? 'checked' : ''}>
+              <span>تظهر عند إضافة خدمة</span>
+            </label>
+            <div class="measurement-unit-actions">
+              <button class="secondary-button" type="button" data-edit-unit="${escapeHtml(unit.id)}">تعديل الاسم</button>
+              <button class="danger-button" type="button" data-delete-unit="${escapeHtml(unit.id)}" title="${deleteReason}" ${cannotDelete ? 'disabled' : ''}>حذف</button>
+            </div>
+          </div>
+        </article>`
+    }).join('')
+  }
+  const resetForm = () => {
+    editingId = null
+    form.reset()
+    defaultInput.checked = true
+    submit.textContent = 'إضافة الوحدة'
+    cancelEdit.hidden = true
+  }
+  const normalizeName = (name: string) => name
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('ar')
+
+  renderList()
+  cancelEdit.addEventListener('click', resetForm)
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const name = nameInput.value.trim().replace(/\s+/g, ' ')
+    if (!name) {
+      status.textContent = 'أدخل اسم وحدة القياس.'
+      status.classList.add('is-error')
+      return
+    }
+    if (name.length > 15) {
+      status.textContent = 'يجب ألا يتجاوز اسم الوحدة 15 حرفًا.'
+      status.classList.add('is-error')
+      return
+    }
+    if (units.some((unit) => unit.id !== editingId && normalizeName(unit.name) === normalizeName(name))) {
+      status.textContent = 'هذه الوحدة مسجلة بالفعل.'
+      status.classList.add('is-error')
+      return
+    }
+    const existing = editingId ? units.find((unit) => unit.id === editingId) : undefined
+    const nextUnits = existing
+      ? units.map((unit) => unit.id === existing.id ? { ...unit, name } : unit)
+      : [...units, {
+        id: crypto.randomUUID(),
+        name,
+        isDefault: defaultInput.checked,
+        isSystem: false,
+      }]
+    submit.disabled = true
+    const saved = await persistMeasurementUnits(nextUnits, status)
+    submit.disabled = false
+    if (!saved) return
+    units = normalizeMeasurementUnits(nextUnits)
+    resetForm()
+    renderList()
+  })
+  list.addEventListener('click', async (event) => {
+    if (!(event.target instanceof Element)) return
+    const editButton = event.target.closest<HTMLButtonElement>('[data-edit-unit]')
+    if (editButton) {
+      const unit = units.find((item) => item.id === editButton.dataset.editUnit)
+      if (!unit) return
+      editingId = unit.id
+      nameInput.value = unit.name
+      defaultInput.checked = unit.isDefault
+      submit.textContent = 'حفظ الاسم'
+      cancelEdit.hidden = false
+      nameInput.focus()
+      return
+    }
+    const deleteButton = event.target.closest<HTMLButtonElement>('[data-delete-unit]')
+    if (!deleteButton || deleteButton.disabled) return
+    const unit = units.find((item) => item.id === deleteButton.dataset.deleteUnit)
+    if (!unit) return
+    const nextUnits = units.filter((item) => item.id !== unit.id)
+    deleteButton.disabled = true
+    const saved = await persistMeasurementUnits(nextUnits, status)
+    if (saved) {
+      units = nextUnits
+      renderList()
+    } else {
+      deleteButton.disabled = false
+    }
+  })
+  list.addEventListener('change', async (event) => {
+    if (!(event.target instanceof HTMLInputElement)) return
+    const toggle = event.target.closest<HTMLInputElement>('[data-unit-default]')
+    if (!toggle) return
+    const unit = units.find((item) => item.id === toggle.dataset.unitDefault)
+    if (!unit || toggle.checked === unit.isDefault) return
+    if (!toggle.checked && units.filter((item) => item.isDefault).length <= 1) {
+      status.textContent = 'يجب إبقاء وحدة واحدة على الأقل ظاهرة عند إضافة الخدمات.'
+      status.classList.add('is-error')
+      renderList()
+      return
+    }
+    toggle.disabled = true
+    const nextUnits = units.map((item) =>
+      item.id === unit.id ? { ...item, isDefault: toggle.checked } : item)
+    const saved = await persistMeasurementUnits(nextUnits, status)
+    if (saved) units = normalizeMeasurementUnits(nextUnits)
+    renderList()
+  })
 }
 
 function renderAccountSettings(content: HTMLElement) {
@@ -3027,6 +3259,9 @@ function renderAccountSettings(content: HTMLElement) {
           <button class="primary-button" id="change-account-password" type="submit">تغيير كلمة المرور</button>
         </form>
       </section>
+      </form>
+      </div>
+      <div id="measurement-units-preferences-panel" hidden></div>
     </section>`
 
   const profileForm = content.querySelector<HTMLFormElement>('#account-profile-form')!
@@ -3200,6 +3435,7 @@ function renderBackupSettings(content: HTMLElement) {
         localCurrencyCode: settings.localCurrencyCode,
         localCurrencyName: settings.localCurrencyName,
         companyProfile: settings.companyProfile,
+        measurementUnits: settings.measurementUnits,
       })
       const url = URL.createObjectURL(archive)
       const link = document.createElement('a')
@@ -6476,11 +6712,22 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
 async function loadSettings(user: User, ownerId: string, sessionId: number) {
   settings = loadCachedSettings(ownerId)
   try {
-    const snapshot = await getDoc(doc(db, 'users', ownerId))
-    const loaded = snapshot.exists() ? safeSettings(snapshot.data()) : defaultSettings
+    const userRef = doc(db, 'users', ownerId)
+    const snapshot = await getDoc(userRef)
+    const remoteData = snapshot.exists() ? snapshot.data() : {}
+    const loaded = snapshot.exists() ? safeSettings(remoteData) : safeSettings(defaultSettings)
     saveCachedSettings(ownerId, loaded)
     if (currentUser?.uid === user.uid && dataUserId === ownerId && authSessionId === sessionId) {
       settings = loaded
+    }
+    if (!Array.isArray(remoteData.measurementUnits)
+      && currentUser?.uid === user.uid && dataUserId === ownerId && authSessionId === sessionId) {
+      try {
+        await setDoc(userRef, { measurementUnits: loaded.measurementUnits }, { merge: true })
+      } catch (migrationError) {
+        console.error('Failed to initialize measurement units:', migrationError)
+        showToast(`تعذر حفظ وحدات القياس الأساسية: ${friendlyError(migrationError)}`)
+      }
     }
   } catch {
     /* Keep the local settings cache. */

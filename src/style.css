@@ -1084,7 +1084,8 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .settings-tabs button.active, .export-tabs button.active { background: #e3f1ef; color: var(--teal); box-shadow: inset 0 0 0 1px #b7d9d4; }
 .settings-page { display: grid; align-content: start; gap: 12px; }
 .settings-subtabs { display: flex; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
-.settings-subtabs button { min-height: 38px; padding: 0 14px; border-radius: 9px; background: #e3f1ef; color: var(--teal); font-size: 12px; font-weight: 800; }
+.settings-subtabs button { min-height: 38px; padding: 0 14px; border-radius: 9px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 800; }
+.settings-subtabs button.active { background: #e3f1ef; color: var(--teal); }
 .settings-form { display: grid; gap: 12px; }
 .settings-section { display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 15px; background: #fff; padding: 16px; }
 .settings-section-heading { display: grid; gap: 4px; }
@@ -1104,6 +1105,23 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .settings-add-contact { justify-self: start; min-height: 40px; }
 .settings-status { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .settings-status.is-error { color: var(--coral); }
+.measurement-unit-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 10px; }
+.measurement-unit-form > label:first-child { display: grid; min-width: 0; gap: 6px; font-size: 12px; }
+.measurement-unit-form-default { display: flex; min-height: 42px; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.measurement-unit-form-default input,
+.measurement-unit-toggle input { width: 17px; height: 17px; margin: 0; accent-color: var(--teal); }
+.measurement-unit-form-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.measurement-unit-form-actions button { min-height: 42px; white-space: nowrap; }
+.measurement-unit-list { display: grid; gap: 9px; }
+.measurement-unit-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; }
+.measurement-unit-info { display: grid; min-width: 0; gap: 4px; }
+.measurement-unit-info strong { font-size: 14px; }
+.measurement-unit-info small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.measurement-unit-controls { display: flex; align-items: center; gap: 14px; }
+.measurement-unit-toggle { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.measurement-unit-actions { display: flex; gap: 6px; }
+.measurement-unit-actions button { min-height: 34px; padding: 0 9px; font-size: 11px; white-space: nowrap; }
+.measurement-unit-actions button:disabled { border-color: var(--line); background: #f1f4f5; color: var(--muted); cursor: not-allowed; }
 #export-invoice-panel {
   display: grid;
   grid-template-rows: minmax(0,1fr) auto;
@@ -2904,7 +2922,13 @@ body.dark-mode .export-tabs button.active { background: #193b3a; color: #7de0d3;
 body.dark-mode .settings-section,
 body.dark-mode .settings-contact-row { border-color: #2b3b49; background: #18232d; }
 body.dark-mode .settings-subtabs { border-bottom-color: #2b3b49; }
-body.dark-mode .settings-subtabs button { background: #193b3a; color: #7de0d3; }
+body.dark-mode .settings-subtabs button { color: #aab8c5; }
+body.dark-mode .settings-subtabs button.active { background: #193b3a; color: #7de0d3; }
+body.dark-mode .measurement-unit-row,
+body.dark-mode .measurement-unit-form-default { border-color: #2b3b49; background: #202d37; }
+body.dark-mode .measurement-unit-form-default { border: 1px solid #2b3b49; border-radius: 10px; padding: 0 10px; }
+body.dark-mode .measurement-unit-toggle { color: #aab8c5; }
+body.dark-mode .measurement-unit-actions button:disabled { border-color: #354652; background: #202d37; color: #7f8e9b; }
 body.dark-mode .settings-section-heading p,
 body.dark-mode .settings-status { color: #aab8c5; }
 body.dark-mode .settings-status.is-error { color: #ff8c8c; }
@@ -3093,6 +3117,10 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
   .settings-fields > label:has(textarea) { grid-column: auto; }
   .settings-contact-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .settings-remove-contact { grid-column: 1 / -1; justify-self: end; min-height: 34px; }
+  .measurement-unit-form { grid-template-columns: 1fr; }
+  .measurement-unit-form-default { justify-self: start; }
+  .measurement-unit-row { align-items: stretch; flex-direction: column; gap: 10px; }
+  .measurement-unit-controls { justify-content: space-between; flex-wrap: wrap; gap: 9px; }
   .export-service-row { grid-template-columns: 1fr; }
   .export-price-field { min-width: 0; }
   .export-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
