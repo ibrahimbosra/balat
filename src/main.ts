@@ -913,17 +913,12 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
     </div>
   `)
 
-  const closeConfirmation = () => {
-    confirmBackdrop.remove()
-    document.body.append(accountBackdrop)
-  }
-  confirmBackdrop.querySelectorAll<HTMLButtonElement>('[data-close-account-export]').forEach((button) => {
-    button.addEventListener('click', closeConfirmation)
-  })
   const previewButton = confirmBackdrop.querySelector<HTMLButtonElement>('#preview-account-export')!
   const previewSection = confirmBackdrop.querySelector<HTMLElement>('.account-export-preview')!
   const previewPages = confirmBackdrop.querySelector<HTMLElement>('#account-export-preview-pages')!
   let previewVisible = false
+  let previewUpdateTimer: number | undefined
+  let previewRevision = 0
 
   const collectExportOptions = () => {
     const workshopNames: Record<string, string> = {}
@@ -934,20 +929,34 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
     return { workshopNames, note }
   }
 
+  const closeConfirmation = () => {
+    previewRevision += 1
+    if (previewUpdateTimer !== undefined) {
+      window.clearTimeout(previewUpdateTimer)
+      previewUpdateTimer = undefined
+    }
+    confirmBackdrop.remove()
+    document.body.append(accountBackdrop)
+  }
+  confirmBackdrop.querySelectorAll<HTMLButtonElement>('[data-close-account-export]').forEach((button) => {
+    button.addEventListener('click', closeConfirmation)
+  })
+
   const cancelPreview = () => {
+    previewRevision += 1
+    if (previewUpdateTimer !== undefined) {
+      window.clearTimeout(previewUpdateTimer)
+      previewUpdateTimer = undefined
+    }
     previewVisible = false
     previewSection.hidden = true
     previewPages.replaceChildren()
     previewButton.textContent = 'معاينة'
   }
 
-  previewButton.addEventListener('click', async () => {
-    if (previewVisible) {
-      cancelPreview()
-      return
-    }
+  const renderPreview = async (scrollIntoView = false) => {
+    const revision = ++previewRevision
     const { workshopNames, note } = collectExportOptions()
-    previewButton.disabled = true
     const result = await exportCustomerAccountStatementA4(
       previewButton,
       customer,
@@ -956,31 +965,46 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
       true,
       1,
     )
-    previewButton.disabled = false
-    if (Array.isArray(result)) {
-      result.forEach((canvas, index) => {
-        canvas.className = 'account-export-preview-page'
-        canvas.setAttribute('role', 'img')
-        canvas.setAttribute('aria-label', `معاينة صفحة كشف الحساب ${index + 1}`)
-      })
-      previewPages.replaceChildren(...result)
-      previewSection.hidden = false
-      previewVisible = true
-      previewButton.textContent = 'إلغاء المعاينة'
-      previewSection.scrollIntoView({ block: 'start' })
-    } else {
-      previewButton.textContent = 'معاينة'
+    if (!previewVisible || revision !== previewRevision || !Array.isArray(result)) return false
+    result.forEach((canvas, index) => {
+      canvas.className = 'account-export-preview-page'
+      canvas.setAttribute('role', 'img')
+      canvas.setAttribute('aria-label', `معاينة صفحة كشف الحساب ${index + 1}`)
+    })
+    previewPages.replaceChildren(...result)
+    previewSection.hidden = false
+    if (scrollIntoView) previewSection.scrollIntoView({ block: 'start' })
+    return true
+  }
+
+  const schedulePreviewUpdate = () => {
+    if (!previewVisible) return
+    if (previewUpdateTimer !== undefined) window.clearTimeout(previewUpdateTimer)
+    previewUpdateTimer = window.setTimeout(() => {
+      previewUpdateTimer = undefined
+      void renderPreview()
+    }, 100)
+  }
+
+  previewButton.addEventListener('click', async () => {
+    if (previewVisible) {
+      cancelPreview()
+      return
     }
+    previewVisible = true
+    previewButton.textContent = 'إلغاء المعاينة'
+    if (!await renderPreview(true) && previewVisible) cancelPreview()
   })
   confirmBackdrop.querySelectorAll<HTMLInputElement>('[data-account-workshop]').forEach((input) => {
-    input.addEventListener('input', () => {
-      if (previewVisible) cancelPreview()
-    })
+    input.addEventListener('input', schedulePreviewUpdate)
   })
-  confirmBackdrop.querySelector<HTMLTextAreaElement>('#account-export-note')?.addEventListener('input', () => {
-    if (previewVisible) cancelPreview()
-  })
+  confirmBackdrop.querySelector<HTMLTextAreaElement>('#account-export-note')?.addEventListener('input', schedulePreviewUpdate)
   confirmBackdrop.querySelector<HTMLButtonElement>('#confirm-account-export')!.addEventListener('click', async (event) => {
+    previewRevision += 1
+    if (previewUpdateTimer !== undefined) {
+      window.clearTimeout(previewUpdateTimer)
+      previewUpdateTimer = undefined
+    }
     const button = event.currentTarget as HTMLButtonElement
     const workshopNames: Record<string, string> = {}
     confirmBackdrop.querySelectorAll<HTMLInputElement>('[data-account-workshop]').forEach((input) => {
@@ -1000,7 +1024,7 @@ async function exportCustomerAccountStatementA4(
   previewOnly = false,
   imageScale: ImageExportScale = highQualityImageScale,
 ): Promise<boolean | HTMLCanvasElement[]> {
-  button.disabled = true
+  if (!previewOnly) button.disabled = true
   try {
     void exportCustomerAccountStatement
     const linkedInvoices = getCustomerInvoiceRecords(customer)
@@ -1041,6 +1065,14 @@ async function exportCustomerAccountStatementA4(
       return { canvas, context }
     }
 
+    const measureLegendWidth = (context: CanvasRenderingContext2D, text: string) => {
+      context.save()
+      context.font = '800 12px Cairo, sans-serif'
+      const legendWidth = Math.max(110, context.measureText(text).width + 28)
+      context.restore()
+      return legendWidth
+    }
+
     const drawLegend = (
       context: CanvasRenderingContext2D,
       text: string,
@@ -1053,7 +1085,7 @@ async function exportCustomerAccountStatementA4(
       context.save()
       context.font = '800 12px Cairo, sans-serif'
       context.textAlign = 'center'
-      const legendWidth = Math.max(110, context.measureText(text).width + 28)
+      const legendWidth = measureLegendWidth(context, text)
       context.fillStyle = background
       context.strokeStyle = border
       context.lineWidth = 1.5
@@ -1064,6 +1096,7 @@ async function exportCustomerAccountStatementA4(
       context.fillStyle = color
       context.fillText(text, centerX, centerY)
       context.restore()
+      return legendWidth
     }
 
     const drawPageHeader = (
@@ -1251,8 +1284,12 @@ async function exportCustomerAccountStatementA4(
         : status.key === 'partial'
           ? { background: '#fef3c7', border: '#fcd34d', color: '#92400e' }
           : { background: '#fee2e2', border: '#fca5a5', color: '#991b1b' }
-      drawLegend(activeContext, status.label, 150, invoiceY + 32, statusStyle.background, statusStyle.border, statusStyle.color)
-      drawLegend(activeContext, `عدد الدفعات لهذه الفاتورة: ${sortedPayments.length}`, 610, invoiceY + 32, '#eef9f7', '#9ecdc8', teal)
+      const statusCenterX = 150
+      const paymentCountLabel = `عدد الدفعات لهذه الفاتورة: ${sortedPayments.length}`
+      const statusWidth = drawLegend(activeContext, status.label, statusCenterX, invoiceY + 32, statusStyle.background, statusStyle.border, statusStyle.color)
+      const paymentCountWidth = measureLegendWidth(activeContext, paymentCountLabel)
+      const paymentCountCenterX = statusCenterX + statusWidth / 2 + 12 + paymentCountWidth / 2
+      drawLegend(activeContext, paymentCountLabel, paymentCountCenterX, invoiceY + 32, '#eef9f7', '#9ecdc8', teal)
 
       const invoiceSummary = [
         { label: 'الإجمالي', value: getInvoiceNetTotal(record) },
@@ -1322,7 +1359,7 @@ async function exportCustomerAccountStatementA4(
     showToast('تعذر تصدير كشف الحساب. حاول مجددًا.')
     return false
   } finally {
-    button.disabled = false
+    if (!previewOnly) button.disabled = false
   }
 }
 
