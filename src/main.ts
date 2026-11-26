@@ -1291,23 +1291,33 @@ async function exportCustomerAccountStatementA4(
       const paymentCountCenterX = statusCenterX + statusWidth / 2 + 12 + paymentCountWidth / 2
       drawLegend(activeContext, paymentCountLabel, paymentCountCenterX, invoiceY + 32, '#eef9f7', '#9ecdc8', teal)
 
+      const invoiceRemaining = getInvoiceRemainingTotal(record)
       const invoiceSummary = [
-        { label: 'الإجمالي', value: getInvoiceNetTotal(record) },
-        { label: 'المسدد', value: getInvoicePaidTotal(record) },
-        { label: 'الباقي', value: getInvoiceRemainingTotal(record) },
+        { label: 'الإجمالي', value: getInvoiceNetTotal(record), color: teal, background: '#edf8f6', border: '#b9dcd7' },
+        { label: 'المسدد', value: getInvoicePaidTotal(record), color: '#166534', background: '#f0faf3', border: '#bfe4c9' },
+        {
+          label: 'الباقي',
+          value: invoiceRemaining,
+          color: invoiceRemaining <= 0.00001 ? '#166534' : '#92400e',
+          background: invoiceRemaining <= 0.00001 ? '#f0faf3' : '#fff8ed',
+          border: invoiceRemaining <= 0.00001 ? '#bfe4c9' : '#efd39c',
+        },
       ]
       invoiceSummary.forEach((item, index) => {
         const cardWidth = 260
         const cardX = 1012 - cardWidth - index * 280
-        activeContext.fillStyle = '#f7faf9'
+        activeContext.fillStyle = item.background
+        activeContext.strokeStyle = item.border
+        activeContext.lineWidth = 1
         activeContext.beginPath()
         activeContext.roundRect(cardX, invoiceY + 92, cardWidth, 54, 10)
         activeContext.fill()
+        activeContext.stroke()
         activeContext.textAlign = 'center'
         activeContext.fillStyle = muted
         activeContext.font = '700 11px Cairo, sans-serif'
         activeContext.fillText(item.label, cardX + cardWidth / 2, invoiceY + 110)
-        activeContext.fillStyle = ink
+        activeContext.fillStyle = item.color
         activeContext.font = '800 15px Cairo, sans-serif'
         activeContext.fillText(formatUsdAmount(item.value), cardX + cardWidth / 2, invoiceY + 130)
       })
