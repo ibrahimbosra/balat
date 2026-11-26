@@ -817,18 +817,20 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   font-size: 11px;
 }
 .account-export-preview-frame {
-  max-height: 420px;
-  overflow: auto;
+  display: grid;
+  gap: 12px;
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #edf1f0;
   padding: 8px;
   text-align: center;
 }
-.account-export-preview-frame img {
+.account-export-preview-page {
   display: block;
-  width: 100%;
+  width: min(100%, 520px);
   height: auto;
+  margin: 0 auto;
   border-radius: 6px;
   box-shadow: 0 8px 20px rgba(32,48,68,.12);
 }

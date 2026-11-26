@@ -902,9 +902,7 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
           <div class="account-export-preview-head">
             <strong>معاينة كشف الحساب</strong>
           </div>
-          <div class="account-export-preview-frame">
-            <img id="account-export-preview-image" alt="معاينة كشف حساب الزبون">
-          </div>
+          <div class="account-export-preview-frame" id="account-export-preview-pages"></div>
         </section>
       </div>
       <div class="account-statement-actions">
@@ -924,7 +922,7 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
   })
   const previewButton = confirmBackdrop.querySelector<HTMLButtonElement>('#preview-account-export')!
   const previewSection = confirmBackdrop.querySelector<HTMLElement>('.account-export-preview')!
-  const previewImage = confirmBackdrop.querySelector<HTMLImageElement>('#account-export-preview-image')!
+  const previewPages = confirmBackdrop.querySelector<HTMLElement>('#account-export-preview-pages')!
   let previewVisible = false
 
   const collectExportOptions = () => {
@@ -939,7 +937,7 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
   const cancelPreview = () => {
     previewVisible = false
     previewSection.hidden = true
-    previewImage.removeAttribute('src')
+    previewPages.replaceChildren()
     previewButton.textContent = 'معاينة'
   }
 
@@ -950,21 +948,26 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
     }
     const { workshopNames, note } = collectExportOptions()
     previewButton.disabled = true
-    previewButton.textContent = 'جارٍ تجهيز المعاينة...'
     const result = await exportCustomerAccountStatementA4(
       previewButton,
       customer,
       workshopNames,
       note,
       true,
+      1,
     )
     previewButton.disabled = false
-    if (typeof result === 'string') {
-      previewImage.src = result
+    if (Array.isArray(result)) {
+      result.forEach((canvas, index) => {
+        canvas.className = 'account-export-preview-page'
+        canvas.setAttribute('role', 'img')
+        canvas.setAttribute('aria-label', `معاينة صفحة كشف الحساب ${index + 1}`)
+      })
+      previewPages.replaceChildren(...result)
       previewSection.hidden = false
       previewVisible = true
       previewButton.textContent = 'إلغاء المعاينة'
-      previewSection.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      previewSection.scrollIntoView({ block: 'start' })
     } else {
       previewButton.textContent = 'معاينة'
     }
@@ -995,7 +998,8 @@ async function exportCustomerAccountStatementA4(
   workshopNames: Record<string, string>,
   exportNote: string,
   previewOnly = false,
-): Promise<boolean | string> {
+  imageScale: ImageExportScale = highQualityImageScale,
+): Promise<boolean | HTMLCanvasElement[]> {
   button.disabled = true
   try {
     void exportCustomerAccountStatement
@@ -1015,7 +1019,7 @@ async function exportCustomerAccountStatementA4(
 
     const width = 1123
     const height = 1587
-    const scale = 2
+    const scale = imageScale
     const teal = '#007d79'
     const ink = '#203044'
     const muted = '#718096'
@@ -1295,24 +1299,23 @@ async function exportCustomerAccountStatementA4(
       ctx.fillText(`ملاحظة: ${exportNote}`, 561, 1518)
     }
 
+    if (previewOnly) return canvases
+
     const pageCount = canvases.length
     for (let index = 0; index < canvases.length; index += 1) {
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvases[index].toBlob((result) => result ? resolve(result) : reject(new Error('Failed to create PNG')), 'image/png')
       })
-      if (previewOnly && index === 0) return canvases[index].toDataURL('image/png')
-      if (!previewOnly) {
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = `كشف-حساب-${customer.name}-صفحة-${index + 1}-من-${pageCount}.png`
-        document.body.append(link)
-        link.click()
-        link.remove()
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `كشف-حساب-${customer.name}-فائقة-الجودة-صفحة-${index + 1}-من-${pageCount}.png`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     }
-    if (!previewOnly) showToast('تم تصدير كشف الحساب بصور A4.')
+    showToast('تم تصدير كشف الحساب بصور A4 فائقة الجودة.')
     return true
   } catch (error) {
     console.error('Failed to export A4 customer account statement:', error)
