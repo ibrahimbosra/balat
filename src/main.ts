@@ -5024,7 +5024,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     invoicePanel.innerHTML = `
       <div class="invoice-workspace">
         <div class="invoice-items">
-          ${invoiceItems.map(({ id, custom, name, notes, quantity, price, unit, currencyCode }, index) => `
+          ${invoiceItems.map(({ id, custom, name, notes, quantity, price, unit }, index) => `
             <article class="invoice-service-card" data-invoice-item="${id}">
               <span class="service-order invoice-card-order" aria-label="ترتيب الخدمة ${index + 1} في الفاتورة">${index + 1}</span>
               <div class="invoice-card-header">
