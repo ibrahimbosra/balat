@@ -36,6 +36,7 @@ import {
   type RestoreMode,
   type ValidatedBackup,
 } from './user-backup'
+import { openUsagePolicyDialog } from './privacy-policy'
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAnaTxPXhxMI3A-U4IucbEDfQ8hOTbix_w',
@@ -76,8 +77,7 @@ type CompanyProfile = {
 }
 
 type AccountProfile = {
-  firstName: string
-  lastName: string
+  name: string
   phone: string
 }
 
@@ -187,6 +187,8 @@ const defaultSettings: AppSettings = {
 let currentUser: User | null = null
 let dataUserId = ''
 let authSessionId = 0
+let accountProfile: AccountProfile = { name: '', phone: '' }
+let accountProfileReady = false
 let settings: AppSettings = defaultSettings
 let activeMainSection: MainSection = 'services'
 let workServices: WorkService[] = []
@@ -271,6 +273,40 @@ function safeCompanyProfile(value: unknown): CompanyProfile {
     details: text(data.details, 500),
     address: text(data.address, 200),
     contacts,
+  }
+}
+
+function accountProfileForUser(user: User, value: unknown): AccountProfile {
+  const data = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  const legacyName = [data.firstName, data.lastName]
+    .filter((part): part is string => typeof part === 'string')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ')
+  const savedName = typeof data.name === 'string' ? data.name.trim() : ''
+  const savedPhone = typeof data.phone === 'string' ? data.phone.trim() : ''
+  return {
+    name: (savedName || legacyName || user.displayName?.trim() || '').slice(0, 60),
+    phone: (savedPhone || user.phoneNumber?.trim() || '').slice(0, 30),
+  }
+}
+
+function currentCompanyBranding() {
+  if (!currentUser) return { name: '', offerings: '', contactLine: '', contactDetails: '' }
+  const company = safeCompanyProfile(settings.companyProfile)
+  const phones = company.contacts
+    .map((contact) => contact.phone.trim())
+    .filter(Boolean)
+  const contactDetails = company.contacts
+    .map((contact) => [contact.name.trim(), contact.phone.trim()].filter(Boolean).join(' '))
+    .filter(Boolean)
+  return {
+    name: company.name.trim(),
+    offerings: company.offerings.trim(),
+    contactLine: phones.length ? `للتواصل: ${phones.join('  -  ')}` : '',
+    contactDetails: contactDetails.join('  -  '),
   }
 }
 
@@ -592,7 +628,30 @@ function renderBootstrap(message = 'جارٍ استعادة جلستك...') {
   appRoot.innerHTML = `<main class="bootstrap"><div class="brand-mark">أسطح</div><p>${message}</p></main>`
 }
 
-function renderAuth(error = '', signUp = false) {
+function attachPasswordToggle(button: HTMLButtonElement) {
+  const targets = button.dataset.targets
+    ? button.dataset.targets.split(',')
+    : button.dataset.target
+      ? [button.dataset.target]
+      : []
+  const inputs = targets
+    .map((name) => document.querySelector<HTMLInputElement>(`input[name="${name.trim()}"]`))
+    .filter((input): input is HTMLInputElement => Boolean(input))
+  if (!inputs.length) return
+  button.addEventListener('click', () => {
+    const shouldShow = inputs.some((input) => input.type === 'password')
+    inputs.forEach((input) => { input.type = shouldShow ? 'text' : 'password' })
+    button.textContent = shouldShow ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'
+    button.setAttribute('aria-label', shouldShow ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور')
+    button.setAttribute('aria-pressed', String(shouldShow))
+  })
+}
+
+function renderAuth(
+  error = '',
+  signUp = false,
+  initial: { name?: string; phone?: string; email?: string } = {},
+) {
   appRoot.innerHTML = `
     <main class="auth-page">
       <div class="brand-header">
@@ -604,29 +663,86 @@ function renderAuth(error = '', signUp = false) {
       </div>
       <div class="auth-header"><h2>${signUp ? 'إنشاء حساب جديد' : 'تسجيل الدخول إلى حسابك'}</h2></div>
       <form id="auth-form" class="auth-form">
-        <label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" placeholder="name@example.com" required></label>
-        <label>كلمة المرور<input name="password" type="password" autocomplete="${signUp ? 'new-password' : 'current-password'}" minlength="6" required></label>
-        ${signUp ? '<label>تأكيد كلمة المرور<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></label>' : ''}
+        ${signUp ? `<label>الاسم أو اللقب<input name="name" maxlength="60" autocomplete="name" value="${escapeHtml(initial.name || '')}" required></label>
+        <label>رقم الهاتف<input name="phone" type="tel" inputmode="tel" maxlength="30" autocomplete="tel" value="${escapeHtml(initial.phone || '')}" required></label>` : ''}
+        <label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" value="${escapeHtml(initial.email || '')}" placeholder="name@example.com" required></label>
+        ${signUp ? `
+          <label class="auth-field">
+            <div class="field-header-row">
+              <span class="field-label">كلمة المرور</span>
+              <button class="password-visibility-toggle" type="button" data-targets="password,confirmPassword" aria-label="إظهار كلمة المرور" aria-pressed="false">إظهار كلمة المرور</button>
+            </div>
+            <input name="password" type="password" autocomplete="new-password" minlength="6" placeholder="••••••••" required>
+          </label>
+          <label class="auth-field">
+            <span class="field-label">تأكيد كلمة المرور</span>
+            <input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" placeholder="••••••••" required>
+          </label>` : `
+          <label class="auth-field">
+            <div class="field-header-row">
+              <span class="field-label">كلمة المرور</span>
+              <button class="password-visibility-toggle" type="button" data-target="password" aria-label="إظهار كلمة المرور" aria-pressed="false">إظهار كلمة المرور</button>
+            </div>
+            <input name="password" type="password" autocomplete="current-password" minlength="6" placeholder="••••••••" required>
+          </label>`}
+        ${signUp ? `
+          <div class="auth-policy-consent">
+            <input id="signup-policy-accepted" name="policyAccepted" type="checkbox" required>
+            <label for="signup-policy-accepted">أوافق على</label>
+            <button class="auth-policy-link" id="auth-policy-link" type="button">سياسة الاستخدام</button>
+          </div>` : `
+          <div class="auth-policy-login">
+            <span>للاطلاع على</span>
+            <button class="auth-policy-link" id="auth-policy-link" type="button">سياسة الاستخدام</button>
+          </div>`}
         <p class="form-error">${escapeHtml(error)}</p>
         <button class="primary-button" type="submit">${signUp ? 'إنشاء الحساب' : 'تسجيل الدخول'}</button>
         <button class="text-button" type="button" id="toggle-auth">${signUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب جديد'}</button>
       </form>
     </main>`
+  const policyLink = document.querySelector<HTMLButtonElement>('#auth-policy-link')!
+  policyLink.addEventListener('click', () => openUsagePolicyDialog(policyLink))
+  document.querySelectorAll<HTMLButtonElement>('.password-visibility-toggle').forEach(attachPasswordToggle)
   document.querySelector('#toggle-auth')!.addEventListener('click', () => renderAuth('', !signUp))
   document.querySelector<HTMLFormElement>('#auth-form')!.addEventListener('submit', async (event) => {
     event.preventDefault()
-    const form = new FormData(event.currentTarget as HTMLFormElement)
+    const authForm = event.currentTarget as HTMLFormElement
+    const form = new FormData(authForm)
+    if (signUp && authForm.querySelector<HTMLInputElement>('#signup-policy-accepted')?.checked !== true) {
+      authForm.querySelector<HTMLElement>('.form-error')!.textContent = 'يجب الموافقة على سياسة الاستخدام لإنشاء الحساب.'
+      return
+    }
     const email = String(form.get('email')).trim()
     const password = String(form.get('password'))
+    const name = String(form.get('name') || '').trim()
+    const phone = String(form.get('phone') || '').trim()
     const submit = document.querySelector<HTMLButtonElement>('#auth-form button[type="submit"]')!
     submit.disabled = true
     try {
       if (signUp) {
-        if (password !== String(form.get('confirmPassword'))) {
-          renderAuth('كلمتا المرور غير متطابقتين', true)
+        if (!name || !phone) {
+          renderAuth('أدخل الاسم أو اللقب ورقم الهاتف لإكمال إنشاء الحساب.', true, { name, phone, email })
           return
         }
-        await createUserWithEmailAndPassword(auth, email, password)
+        if (password !== String(form.get('confirmPassword'))) {
+          renderAuth('كلمتا المرور غير متطابقتين', true, { name, phone, email })
+          return
+        }
+        const credential = await createUserWithEmailAndPassword(auth, email, password)
+        if (currentUser?.uid === credential.user.uid) {
+          accountProfile = { name, phone }
+          accountProfileReady = true
+        }
+        try {
+          await setDoc(
+            doc(db, 'users', resolveDataUserId(credential.user), 'accountProfiles', credential.user.uid),
+            { name, phone },
+            { merge: true },
+          )
+        } catch (profileError) {
+          console.error('Account created, but the signup profile could not be saved.', profileError)
+          showToast('تم إنشاء الحساب، لكن تعذر حفظ الاسم ورقم الهاتف. يمكنك حفظهما من إعدادات الحساب.')
+        }
       } else {
         await signInWithEmailAndPassword(auth, email, password)
       }
@@ -638,7 +754,7 @@ function renderAuth(error = '', signUp = false) {
         ? 'هذا البريد مستخدم من قبل.'
         : code === 'auth/network-request-failed'
           ? 'تعذر الاتصال بـ Firebase.'
-          : 'تعذر تسجيل الدخول أو إنشاء الحساب.', signUp)
+          : 'تعذر تسجيل الدخول أو إنشاء الحساب.', signUp, { name, phone, email })
     }
   })
 }
@@ -1154,6 +1270,16 @@ async function exportCustomerAccountStatementA4(
       pageIndex: number,
       pageCount: number,
     ) => {
+      drawCompanyBranding(context, {
+        x: 80,
+        nameY: 58,
+        contactY: 82,
+        maxWidth: 380,
+        align: 'left',
+        nameFont: '800 16px Cairo, sans-serif',
+        contactFont: '700 10px Cairo, sans-serif',
+        nameColor: ink,
+      })
       context.textAlign = 'right'
       context.fillStyle = ink
       context.font = '800 21px Cairo, sans-serif'
@@ -1510,6 +1636,16 @@ async function exportCustomerAccountStatement(
     context.fillStyle = ink
     context.font = '800 24px Cairo, sans-serif'
     context.fillText('كشف حساب زبون', 1120, 72)
+    drawCompanyBranding(context, {
+      x: 80,
+      nameY: 72,
+      contactY: 100,
+      maxWidth: 400,
+      align: 'left',
+      nameFont: '800 20px Cairo, sans-serif',
+      contactFont: '700 12px Cairo, sans-serif',
+      nameColor: ink,
+    })
     context.font = '800 38px Cairo, sans-serif'
     context.fillText(customer.name, 1120, 118)
     context.fillStyle = muted
@@ -2724,14 +2860,14 @@ function renderPreferencesSettings(content: HTMLElement) {
         <section class="settings-section">
           <div class="settings-section-heading">
             <h2>بيانات الشركة</h2>
-            <p>تُستخدم هذه البيانات لتعريف شركتك في إعدادات التطبيق.</p>
+            <p>تُستخدم هذه البيانات لتعريف شركتك في إعدادات التطبيق وتصدير الفواتير.</p>
           </div>
           <div class="settings-fields">
             <label>اسم الشركة
-              <input name="companyName" maxlength="100" value="${escapeHtml(profile.name)}" placeholder="اسم الشركة أو الورشة">
+              <input name="companyName" maxlength="100" value="${escapeHtml(profile.name)}" placeholder="شركة النور التجارية">
             </label>
-            <label>ماذا تقدم الشركة
-              <textarea name="companyOfferings" maxlength="300" rows="2" placeholder="مثل: خدمات البلاط والسيراميك والرخام">${escapeHtml(profile.offerings)}</textarea>
+            <label>النشاط التجاري الذي تقدمه الشركة
+              <textarea class="company-offerings-field" name="companyOfferings" maxlength="300" rows="1" placeholder="التجارة العامة والتوزيع">${escapeHtml(profile.offerings)}</textarea>
             </label>
             <label>العنوان
               <input name="companyAddress" maxlength="200" value="${escapeHtml(profile.address)}" placeholder="عنوان الشركة">
@@ -2845,12 +2981,7 @@ function renderAccountSettings(content: HTMLElement) {
   const user = currentUser
   if (!user) return
   const ownerId = dataUserId
-  const nameParts = (user.displayName || '').trim().split(/\s+/).filter(Boolean)
-  const initialProfile: AccountProfile = {
-    firstName: nameParts[0] || '',
-    lastName: nameParts.slice(1).join(' '),
-    phone: user.phoneNumber || '',
-  }
+  const initialProfile = accountProfileReady ? accountProfile : accountProfileForUser(user, null)
   content.innerHTML = `
     <section class="settings-page">
       <section class="settings-section">
@@ -2860,11 +2991,8 @@ function renderAccountSettings(content: HTMLElement) {
         </div>
         <form id="account-profile-form" class="settings-form">
           <div class="settings-fields account-profile-fields">
-            <label>الاسم
-              <input name="firstName" maxlength="60" value="${escapeHtml(initialProfile.firstName)}" autocomplete="given-name" required>
-            </label>
-            <label>اللقب
-              <input name="lastName" maxlength="60" value="${escapeHtml(initialProfile.lastName)}" autocomplete="family-name">
+            <label>الاسم أو اللقب
+              <input name="name" maxlength="60" value="${escapeHtml(initialProfile.name)}" autocomplete="name" required>
             </label>
             <label>رقم الهاتف
               <input name="phone" type="tel" inputmode="tel" maxlength="30" value="${escapeHtml(initialProfile.phone)}" autocomplete="tel">
@@ -2874,7 +3002,7 @@ function renderAccountSettings(content: HTMLElement) {
               <small id="account-email-note">البريد الإلكتروني مرتبط بتسجيل الدخول ولا يمكن تغييره من هنا.</small>
             </label>
           </div>
-          <p class="settings-status" id="account-profile-status" role="status" aria-live="polite">جارٍ تحميل بيانات الحساب...</p>
+          <p class="settings-status" id="account-profile-status" role="status" aria-live="polite"></p>
           <button class="primary-button" id="save-account-profile" type="submit">حفظ بيانات الحساب</button>
         </form>
       </section>
@@ -2903,57 +3031,35 @@ function renderAccountSettings(content: HTMLElement) {
 
   const profileForm = content.querySelector<HTMLFormElement>('#account-profile-form')!
   const profileStatus = content.querySelector<HTMLElement>('#account-profile-status')!
-  let profileTouched = false
-  let profileSaving = false
-  profileForm.addEventListener('input', () => { profileTouched = true })
   const profileReference = doc(db, 'users', ownerId, 'accountProfiles', user.uid)
-  void getDoc(profileReference).then((snapshot) => {
-    if (currentUser?.uid !== user.uid || dataUserId !== ownerId || !content.isConnected) return
-    if (!profileTouched && snapshot.exists()) {
-      const saved = snapshot.data()
-      const firstName = typeof saved.firstName === 'string' ? saved.firstName : initialProfile.firstName
-      const lastName = typeof saved.lastName === 'string' ? saved.lastName : initialProfile.lastName
-      const phone = typeof saved.phone === 'string' ? saved.phone : initialProfile.phone
-      profileForm.querySelector<HTMLInputElement>('[name="firstName"]')!.value = firstName
-      profileForm.querySelector<HTMLInputElement>('[name="lastName"]')!.value = lastName
-      profileForm.querySelector<HTMLInputElement>('[name="phone"]')!.value = phone
-    }
-    if (!profileSaving) profileStatus.textContent = ''
-  }).catch((loadError: unknown) => {
-    if (content.isConnected && !profileSaving) {
-      profileStatus.textContent = `تعذر تحميل بيانات الحساب: ${friendlyError(loadError)}`
-      profileStatus.classList.add('is-error')
-    }
-  })
 
   profileForm.addEventListener('submit', async (event) => {
     event.preventDefault()
     const form = event.currentTarget as HTMLFormElement
     const formData = new FormData(form)
     const profile: AccountProfile = {
-      firstName: String(formData.get('firstName') || '').trim(),
-      lastName: String(formData.get('lastName') || '').trim(),
+      name: String(formData.get('name') || '').trim(),
       phone: String(formData.get('phone') || '').trim(),
     }
-    if (!profile.firstName) {
-      profileStatus.textContent = 'أدخل الاسم قبل الحفظ.'
+    if (!profile.name) {
+      profileStatus.textContent = 'أدخل الاسم أو اللقب قبل الحفظ.'
       profileStatus.classList.add('is-error')
       return
     }
     const submit = content.querySelector<HTMLButtonElement>('#save-account-profile')!
-    profileSaving = true
     submit.disabled = true
     profileStatus.classList.remove('is-error')
     profileStatus.textContent = 'جارٍ حفظ بيانات الحساب...'
     try {
       await setDoc(profileReference, profile, { merge: true })
       if (currentUser?.uid !== user.uid || dataUserId !== ownerId) return
+      accountProfile = profile
+      accountProfileReady = true
       profileStatus.textContent = 'تم حفظ بيانات الحساب بنجاح.'
     } catch (saveError) {
       profileStatus.textContent = friendlyError(saveError)
       profileStatus.classList.add('is-error')
     } finally {
-      profileSaving = false
       submit.disabled = false
     }
   })
@@ -3061,8 +3167,15 @@ function renderSystemSettings(content: HTMLElement) {
     saveCachedSettings(dataUserId, settings)
     try { await setDoc(doc(db, 'users', dataUserId), settings, { merge: true }) } catch { /* Keep local state. */ }
   })
-  content.querySelector('#logout')!.addEventListener('click', async () => {
-    await signOut(auth)
+  const logoutButton = content.querySelector<HTMLButtonElement>('#logout')!
+  logoutButton.addEventListener('click', async () => {
+    logoutButton.disabled = true
+    try {
+      await signOut(auth)
+    } catch (logoutError) {
+      logoutButton.disabled = false
+      showToast(friendlyError(logoutError))
+    }
   })
 }
 
@@ -3194,6 +3307,71 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
   return lines.length ? lines : ['']
 }
 
+function drawCompanyBranding(
+  context: CanvasRenderingContext2D,
+  options: {
+    x: number
+    nameY: number
+    contactY: number
+    maxWidth: number
+    align?: CanvasTextAlign
+    nameFont?: string
+    contactFont?: string
+    nameColor?: string
+    contactColor?: string
+  },
+) {
+  const { name, contactLine } = currentCompanyBranding()
+  if (!name && !contactLine) return
+  context.save()
+  context.direction = 'rtl'
+  context.textAlign = options.align || 'center'
+  if (name) {
+    context.fillStyle = options.nameColor || '#007d79'
+    context.font = options.nameFont || '800 24px Cairo, sans-serif'
+    context.fillText(name, options.x, options.nameY, options.maxWidth)
+  }
+  if (contactLine) {
+    context.fillStyle = options.contactColor || '#718096'
+    context.font = options.contactFont || '700 12px Cairo, sans-serif'
+    context.fillText(contactLine, options.x, options.contactY, options.maxWidth)
+  }
+  context.restore()
+}
+
+function drawInvoiceCompanyBranding(context: CanvasRenderingContext2D, width: number) {
+  const company = currentCompanyBranding()
+  const lines = [
+    { text: company.name, font: '800 20px "Cairo", sans-serif', size: 20 },
+    { text: company.offerings, font: '800 18px "Cairo", sans-serif', size: 18 },
+    { text: company.contactDetails, font: '800 16px "Cairo", sans-serif', size: 16 },
+  ].filter((line) => line.text)
+  if (!lines.length) return null
+
+  const lineHeight = 34
+  const headerCenterY = 74
+  const firstLineY = headerCenterY - ((lines.length - 1) * lineHeight) / 2
+  context.save()
+  context.direction = 'rtl'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  lines.forEach((line, index) => {
+    context.fillStyle = '#111111'
+    context.font = line.font
+    context.fillText(line.text, width / 2, firstLineY + index * lineHeight, width - 80)
+  })
+  const lastLineY = firstLineY + (lines.length - 1) * lineHeight
+  const dividerY = lastLineY + lines[lines.length - 1].size / 2 + 20
+  context.strokeStyle = '#007d79'
+  context.lineWidth = 2
+  context.beginPath()
+  context.moveTo(40, dividerY)
+  context.lineTo(width - 40, dividerY)
+  context.stroke()
+  context.restore()
+  return dividerY
+}
+
 function invoiceCurrencyLabel(currencyCode: string) {
   return currencyCode === 'USD' ? USD_CURRENCY_SYMBOL : currencyCode
 }
@@ -3302,14 +3480,24 @@ function customerDetailsSegments(details: {
   return segments
 }
 
-function responsibleTeacherSegments(name?: string) {
-  const responsibleTeacherName = name?.trim()
-  return responsibleTeacherName
-    ? [
+function workshopTeacherSegments(workshopName?: string, responsibleTeacherName?: string) {
+  const workshop = workshopName?.trim()
+  const teacher = responsibleTeacherName?.trim()
+  const segments: Array<{ text: string; red: boolean }> = []
+  if (workshop) {
+    segments.push(
+      { text: 'اسم الورشة: ', red: false },
+      { text: workshop, red: true },
+    )
+  }
+  if (workshop && teacher) segments.push({ text: ' | ', red: false })
+  if (teacher) {
+    segments.push(
       { text: 'المعلم المسؤول عن التنفيذ: ', red: false },
-      { text: responsibleTeacherName, red: true },
-    ]
-    : []
+      { text: teacher, red: true },
+    )
+  }
+  return segments
 }
 
 function drawDetailSegments(
@@ -3317,19 +3505,24 @@ function drawDetailSegments(
   width: number,
   y: number,
   segments: Array<{ text: string; red: boolean }>,
+  boldRedValues = false,
 ) {
   if (!segments.length) return
-  context.font = '600 14px "Cairo", sans-serif'
-  const detailWidth = segments.reduce((total, segment) =>
-    total + context.measureText(segment.text).width, 0)
-  const detailScale = Math.min(1, 760 / detailWidth)
   context.save()
+  const fontForSegment = (segment: { text: string; red: boolean }) =>
+    `${segment.red && boldRedValues ? '800' : '600'} 14px "Cairo", sans-serif`
+  const detailWidth = segments.reduce((total, segment) => {
+    context.font = fontForSegment(segment)
+    return total + context.measureText(segment.text).width
+  }, 0)
+  const detailScale = Math.min(1, 760 / detailWidth)
   context.translate(width / 2, 0)
   context.scale(detailScale, 1)
   let detailX = detailWidth / 2
   context.direction = 'rtl'
   context.textAlign = 'right'
   segments.forEach((segment) => {
+    context.font = fontForSegment(segment)
     context.fillStyle = segment.red ? '#c62828' : '#000000'
     context.fillText(segment.text, detailX, y)
     detailX -= context.measureText(segment.text).width
@@ -3383,6 +3576,7 @@ async function exportServicesToImage(
     const customerPhone = options.customerPhone?.trim()
     const customerAddress = options.customerAddress?.trim()
     const exportNote = options.exportNote?.trim() || ''
+    const companyBranding = currentCompanyBranding()
 
     const previewUrls: string[] = []
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
@@ -3399,13 +3593,18 @@ async function exportServicesToImage(
       context.fillStyle = '#007d79'
       context.fillRect(0, 0, width, 12)
       context.textAlign = 'center'
-      context.fillStyle = '#007d79'
-      context.font = '800 34px "Cairo", sans-serif'
-      context.fillText('الكردي لأعمال البلاط والسيراميك والرخام', width / 2, 82)
+      drawCompanyBranding(context, {
+        x: width / 2,
+        nameY: 70,
+        contactY: 96,
+        maxWidth: tableWidth,
+        nameFont: '800 30px "Cairo", sans-serif',
+        contactFont: '700 12px "Cairo", sans-serif',
+      })
 
       context.fillStyle = '#203044'
       context.font = '800 20px "Cairo", sans-serif'
-      context.fillText('قائمة أسعار الخدمات المتوفرة لدينا', width / 2, 125)
+      context.fillText('قائمة أسعار الخدمات', width / 2, 125)
 
       drawCustomerDetails(context, width, 155, { customerName, customerPhone, customerAddress })
 
@@ -3424,7 +3623,7 @@ async function exportServicesToImage(
       context.textAlign = 'center'
       context.font = '600 12px "Cairo", sans-serif'
       context.fillText(
-        'تنويه: هذه قائمة بأسعار الخدمات التي تقدمها شركة الكردي، وليست فاتورةً عن أعمال منفذة.',
+        'تنويه: هذه قائمة بأسعار الخدمات، وليست فاتورةً عن أعمال منفذة.',
         width / 2,
         218,
         tableWidth,
@@ -3518,18 +3717,23 @@ async function exportServicesToImage(
         noteLines.forEach((line, index) => context.fillText(line, width / 2, noteStartY + index * 14, tableWidth))
       }
 
-      context.fillStyle = '#203044'
-      context.textAlign = 'center'
-      context.font = '800 20px "Cairo", sans-serif'
-      context.fillText('الكردي لأعمال البلاط والسيراميك والرخام', width / 2, noteLines.length ? 1125 : 1115)
+      const footerY = noteLines.length ? 1125 : 1115
+      if (companyBranding.name) {
+        context.fillStyle = '#203044'
+        context.textAlign = 'center'
+        context.font = '800 18px "Cairo", sans-serif'
+        context.fillText(companyBranding.name, width / 2, footerY, tableWidth)
+      }
       context.fillStyle = '#007d79'
+      context.textAlign = 'center'
       context.font = '800 18px "Cairo", sans-serif'
-      context.fillText('نسعد بخدمتكم', width / 2, noteLines.length ? 1155 : 1148)
+      context.fillText('نسعد بخدمتكم', width / 2, companyBranding.name ? footerY + 28 : footerY)
       if (pageCount > 1) {
         context.fillStyle = '#718096'
         context.textAlign = 'center'
         context.font = '600 14px "Cairo", sans-serif'
-        context.fillText(`صفحة ${pageIndex + 1} من ${pageCount}`, width / 2, noteLines.length ? 1177 : 1170)
+        const pageNumberY = companyBranding.name ? footerY + 52 : footerY + 30
+        context.fillText(`صفحة ${pageIndex + 1} من ${pageCount}`, width / 2, pageNumberY)
       }
 
       const blob = await new Promise<Blob>((resolve, reject) => {
@@ -3673,22 +3877,364 @@ function openServicesExportDialog(rows: ExportServiceRow[], previousWindow: HTML
   void refreshPreview()
 }
 
-const invoiceFinalPageCapacity = 20
-const invoiceContinuationPageCapacity = 26
+const invoiceFinalPageCapacity = 18
+const invoiceContinuationPageCapacity = 24
 
-function invoicePageRowCounts(totalRows: number) {
-  const pageCount = totalRows <= invoiceFinalPageCapacity
-    ? 1
-    : Math.ceil((totalRows - invoiceFinalPageCapacity) / invoiceContinuationPageCapacity) + 1
+type InvoicePaymentCardData = {
+  payment: InvoicePayment
+  index: number
+  sublabel: string
+}
+
+type InvoicePaymentDisplayRow = {
+  cards: InvoicePaymentCardData[]
+  height: number
+}
+
+type InvoiceSummaryPagePlan = {
+  includeTotals: boolean
+  includeFinancialTotals: boolean
+  paymentRows: InvoicePaymentDisplayRow[]
+}
+
+function invoiceExportPayments(data: InvoiceExportData) {
+  return (data.payments && data.payments.length
+    ? data.payments
+    : (data.upfrontPayment !== null && data.upfrontPayment > 0
+      ? [{ amount: data.upfrontPayment, date: data.upfrontPaymentDate || '', note: '', createdAt: '' }]
+      : [])).filter((payment) => payment.amount > 0)
+}
+
+function invoicePaymentDisplayRows(
+  context: CanvasRenderingContext2D,
+  payments: InvoicePayment[],
+  totalWidth: number,
+): InvoicePaymentDisplayRow[] {
+  const cards = payments.map((payment, index) => ({
+    payment,
+    index,
+    sublabel: [
+      payment.date ? `التاريخ: ${payment.date}` : '',
+      (payment.note || '').trim(),
+    ].filter(Boolean).join(' — '),
+  }))
+  const rows: InvoicePaymentDisplayRow[] = []
+  for (let start = 0; start < cards.length; start += 5) {
+    const rowCards = cards.slice(start, start + 5)
+    const cardGap = 8
+    const cardWidth = (totalWidth - cardGap * (rowCards.length - 1)) / rowCards.length
+    context.font = '600 8px "Cairo", sans-serif'
+    const maxLines = rowCards.reduce((max, card) =>
+      Math.max(max, wrapCanvasText(context, card.sublabel, cardWidth - 12).length), 0)
+    rows.push({
+      cards: rowCards,
+      height: Math.max(44, 40 + maxLines * 10),
+    })
+  }
+  return rows
+}
+
+function invoiceSummaryBlockHeight(
+  includeTotals: boolean,
+  includeFinancialTotals: boolean,
+  hasPayments: boolean,
+  paymentRows: InvoicePaymentDisplayRow[],
+) {
+  let height = 12
+  if (includeTotals) {
+    height += hasPayments ? 20 + 24 : 24 + 24
+  }
+  if (hasPayments && paymentRows.length > 0) {
+    height += (includeTotals ? 4 : 0) + 18 + 4
+    paymentRows.forEach((row, index) => {
+      height += row.height + (index > 0 ? 4 : 0)
+    })
+  }
+  if (includeFinancialTotals) {
+    height += hasPayments ? 4 + 18 + 2 + 48 : 8 + 22 + 4 + 58
+  }
+  return height
+}
+
+function invoiceSummaryPagePlans(
+  paymentRows: InvoicePaymentDisplayRow[],
+  hasPayments: boolean,
+  firstPageHeight: number,
+  continuationPageHeight: number,
+): InvoiceSummaryPagePlan[] {
+  const fullHeight = invoiceSummaryBlockHeight(true, true, hasPayments, paymentRows)
+  if (fullHeight <= firstPageHeight) {
+    return [{ includeTotals: true, includeFinancialTotals: true, paymentRows }]
+  }
+
+  const pages: InvoiceSummaryPagePlan[] = []
+  let rowIndex = 0
+  while (rowIndex < paymentRows.length) {
+    const includeTotals = pages.length === 0
+    const maxHeight = (includeTotals ? firstPageHeight : continuationPageHeight) - 40
+    const pageRows: InvoicePaymentDisplayRow[] = []
+    while (rowIndex < paymentRows.length) {
+      const candidateRows = [...pageRows, paymentRows[rowIndex]]
+      const includeFinancialTotals = rowIndex === paymentRows.length - 1
+      if (
+        invoiceSummaryBlockHeight(includeTotals, includeFinancialTotals, hasPayments, candidateRows) > maxHeight
+        && pageRows.length > 0
+      ) {
+        break
+      }
+      pageRows.push(paymentRows[rowIndex])
+      rowIndex += 1
+      if (
+        invoiceSummaryBlockHeight(
+          includeTotals,
+          rowIndex === paymentRows.length,
+          hasPayments,
+          pageRows,
+        ) > maxHeight
+      ) break
+    }
+    pages.push({
+      includeTotals,
+      includeFinancialTotals: rowIndex === paymentRows.length,
+      paymentRows: pageRows,
+    })
+  }
+  return pages
+}
+
+function invoicePageRowCounts(
+  totalRows: number,
+  singlePageFinalCapacity: number,
+  multiPageFinalCapacity: number,
+) {
+  if (totalRows === 0) return [0]
+  if (totalRows <= singlePageFinalCapacity) return [totalRows]
+
   const pageRowCounts: number[] = []
   let remainingRows = totalRows
-  for (let pageIndex = 0; pageIndex < pageCount - 1; pageIndex += 1) {
-    const pageRows = Math.min(invoiceContinuationPageCapacity, remainingRows - invoiceFinalPageCapacity)
-    pageRowCounts.push(pageRows)
-    remainingRows -= pageRows
+  while (remainingRows > invoiceContinuationPageCapacity) {
+    pageRowCounts.push(invoiceContinuationPageCapacity)
+    remainingRows -= invoiceContinuationPageCapacity
   }
-  pageRowCounts.push(remainingRows)
+  if (remainingRows > multiPageFinalCapacity) {
+    pageRowCounts.push(remainingRows)
+    pageRowCounts.push(0)
+  } else {
+    pageRowCounts.push(remainingRows)
+  }
   return pageRowCounts
+}
+
+function drawInvoiceSummary(
+  context: CanvasRenderingContext2D,
+  data: InvoiceExportData,
+  exportPayments: InvoicePayment[],
+  summaryPage: InvoiceSummaryPagePlan,
+  hasPayments: boolean,
+  left: number,
+  right: number,
+  top: number,
+) {
+  const width = right - left
+  const padding = 6
+  const blockHeight = invoiceSummaryBlockHeight(
+    summaryPage.includeTotals,
+    summaryPage.includeFinancialTotals,
+    hasPayments,
+    summaryPage.paymentRows,
+  )
+  context.fillStyle = '#ffffff'
+  context.fillRect(left, top, width, blockHeight)
+  let y = top + padding
+
+  if (summaryPage.includeTotals) {
+    const quantityTitleHeight = hasPayments ? 20 : 24
+    context.fillStyle = '#007d79'
+    context.fillRect(left + padding, y, width - padding * 2, quantityTitleHeight)
+    context.textAlign = 'center'
+    context.fillStyle = '#ffffff'
+    context.font = '700 12px "Cairo", sans-serif'
+    context.textBaseline = 'middle'
+    context.fillText(
+      'إجمالي مساحة الأعمال المنفذة للورشة:',
+      (left + right) / 2,
+      y + quantityTitleHeight / 2,
+      width - 24,
+    )
+    context.textBaseline = 'alphabetic'
+    y += quantityTitleHeight
+
+    const quantityCellHeight = 24
+    context.fillStyle = '#f3f9f8'
+    context.fillRect(left + padding, y, width - padding * 2, quantityCellHeight)
+    context.strokeStyle = '#c6a253'
+    context.lineWidth = 1
+    context.strokeRect(left + padding, y, width - padding * 2, quantityCellHeight)
+    const quantitySummary = data.unitTotals.map(({ unit, quantity, amount }) =>
+      `${invoiceQuantity(quantity)} ${unit} = ${amount === null ? '—' : `${money(amount)} $`}`).join('  |  ')
+    let quantityFontSize = 11
+    context.fillStyle = '#203044'
+    do {
+      context.font = `700 ${quantityFontSize}px "Cairo", sans-serif`
+      if (context.measureText(quantitySummary).width <= width - 32 || quantityFontSize === 7) break
+      quantityFontSize -= 1
+    } while (true)
+    context.fillText(quantitySummary, (left + right) / 2, y + 15, width - 32)
+    y += quantityCellHeight
+  }
+
+  if (hasPayments && summaryPage.paymentRows.length > 0) {
+    y += summaryPage.includeTotals ? 4 : 0
+    const paymentsTitleHeight = 18
+    context.fillStyle = '#007d79'
+    context.fillRect(left + padding, y, width - padding * 2, paymentsTitleHeight)
+    context.textAlign = 'center'
+    context.fillStyle = '#ffffff'
+    context.font = '700 11px "Cairo", sans-serif'
+    context.fillText(
+      summaryPage.includeTotals ? 'سجل الدفعات' : 'تكملة سجل الدفعات',
+      (left + right) / 2,
+      y + 13,
+    )
+    y += paymentsTitleHeight + 4
+
+    summaryPage.paymentRows.forEach((row, rowIndex) => {
+      const cardGap = 8
+      const cardWidth = (width - padding * 2 - cardGap * (row.cards.length - 1)) / row.cards.length
+      row.cards.forEach((card, cardIndex) => {
+        const cardLeft = right - padding - (cardIndex + 1) * cardWidth - cardIndex * cardGap
+        const cardTop = y
+        context.fillStyle = cardIndex % 2 === 0 ? '#f3f9f8' : '#e8f5f2'
+        context.fillRect(cardLeft, cardTop, cardWidth, row.height)
+        context.strokeStyle = '#c6a253'
+        context.lineWidth = 1
+        context.strokeRect(cardLeft, cardTop, cardWidth, row.height)
+        context.textAlign = 'center'
+        context.fillStyle = '#006e69'
+        context.font = '700 10px "Cairo", sans-serif'
+        context.fillText(`الدفعة ${card.index + 1}`, cardLeft + cardWidth / 2, cardTop + 12, cardWidth - 10)
+        context.fillStyle = '#203044'
+        context.font = '800 13px "Cairo", sans-serif'
+        context.fillText(`${money(card.payment.amount)} $`, cardLeft + cardWidth / 2, cardTop + 28, cardWidth - 10)
+        if (card.sublabel) {
+          context.fillStyle = '#667782'
+          context.font = '600 8px "Cairo", sans-serif'
+          wrapCanvasText(context, card.sublabel, cardWidth - 12).forEach((line, lineIndex) => {
+            context.fillText(line, cardLeft + cardWidth / 2, cardTop + 39 + lineIndex * 10, cardWidth - 12)
+          })
+        }
+      })
+      y += row.height + (rowIndex < summaryPage.paymentRows.length - 1 ? 4 : 0)
+    })
+  }
+
+  if (summaryPage.includeFinancialTotals) {
+    const financialTitleHeight = hasPayments ? 18 : 22
+    y += hasPayments ? 4 : 8
+    context.fillStyle = '#e8f5f2'
+    context.fillRect(left + padding, y, width - padding * 2, financialTitleHeight)
+    context.textAlign = 'center'
+    context.fillStyle = '#006e69'
+    context.font = '700 12px "Cairo", sans-serif'
+    context.textBaseline = 'middle'
+    context.fillText('حساب إجمالي الفاتورة', (left + right) / 2, y + financialTitleHeight / 2)
+    context.textBaseline = 'alphabetic'
+    y += financialTitleHeight + (hasPayments ? 2 : 4)
+
+    const discount = data.discount
+    const hasDiscount = Boolean(discount?.amount)
+    const finalTotal = data.total - (discount?.amount || 0)
+    const summaryCards: Array<{
+      label: string
+      value: string
+      fill: string
+      color: string
+      sublabel?: string
+    }> = hasDiscount && discount
+      ? [
+        { label: 'الإجمالي قبل الخصم', value: `${money(data.total)} $`, fill: '#e8f5f2', color: '#006e69' },
+        {
+          label: discount.mode === 'percentage' ? `الخصم (${discount.value}%)` : 'قيمة الخصم',
+          value: `${money(discount.amount)} $`,
+          fill: '#fff0ed',
+          color: '#c62828',
+        },
+        { label: 'الإجمالي بعد الخصم', value: `${money(finalTotal)} $`, fill: '#e8f5f2', color: '#006e69' },
+      ]
+      : [{
+        label: 'الإجمالي النهائي',
+        value: `${money(finalTotal)} $`,
+        fill: '#e8f5f2',
+        color: '#006e69',
+      }]
+
+    if (hasPayments) {
+      const paidTotal = exportPayments.reduce(
+        (sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0),
+        0,
+      )
+      const remainingAmount = Number(Math.max(0, finalTotal - paidTotal).toFixed(2))
+      const isFullyPaid = remainingAmount <= 0.00001
+      summaryCards.push(
+        {
+          label: 'إجمالي الدفعات',
+          value: `${money(paidTotal)} $`,
+          fill: '#e8f5f2',
+          color: '#006e69',
+        },
+        {
+          label: isFullyPaid ? 'مسددة بالكامل' : 'المتبقي',
+          value: `${money(remainingAmount)} $`,
+          fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
+          color: isFullyPaid ? '#166534' : '#c2410c',
+        },
+      )
+    }
+
+    const cardGap = 8
+    const cardWidth = (width - padding * 2 - cardGap * (summaryCards.length - 1)) / summaryCards.length
+    const cardHeight = hasPayments ? 48 : 58
+    let cardRight = right - padding
+    summaryCards.forEach((card) => {
+      const cardLeft = cardRight - cardWidth
+      context.fillStyle = card.fill
+      context.fillRect(cardLeft, y, cardWidth, cardHeight)
+      context.strokeStyle = card.color === '#c62828' ? card.color : '#c6a253'
+      context.lineWidth = 1
+      context.strokeRect(cardLeft, y, cardWidth, cardHeight)
+      context.textAlign = 'center'
+      context.fillStyle = card.color
+      context.font = '700 10px "Cairo", sans-serif'
+      context.fillText(card.label, cardLeft + cardWidth / 2, y + 15, cardWidth - 10)
+      context.font = '800 14px "Cairo", sans-serif'
+      if (
+        card.label === 'الإجمالي النهائي'
+        || card.label === 'الإجمالي بعد الخصم'
+        || card.label === 'المتبقي'
+        || card.label === 'مسددة بالكامل'
+      ) {
+        const valueBoxWidth = Math.min(cardWidth - 16, context.measureText(card.value).width + 20)
+        const valueBoxY = y + 25
+        context.strokeStyle = '#c62828'
+        context.lineWidth = 2
+        context.strokeRect(cardLeft + cardWidth / 2 - valueBoxWidth / 2, valueBoxY, valueBoxWidth, 20)
+      }
+      if (card.value) context.fillText(card.value, cardLeft + cardWidth / 2, y + 40, cardWidth - 10)
+      if (card.sublabel) {
+        context.fillStyle = '#166534'
+        context.font = '600 8px "Cairo", sans-serif'
+        context.fillText(card.sublabel, cardLeft + cardWidth / 2, y + 46, cardWidth - 10)
+      }
+      cardRight = cardLeft - cardGap
+    })
+    y += cardHeight
+  }
+
+  const bottom = y + padding
+  context.strokeStyle = '#c6a253'
+  context.lineWidth = 2
+  context.strokeRect(left, top, width, bottom - top)
+  return bottom
 }
 
 async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageExportScale) {
@@ -3697,6 +4243,9 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
     document.fonts.load('600 14px Cairo'),
     document.fonts.load('700 14px Cairo'),
     document.fonts.load('800 14px Cairo'),
+    document.fonts.load('800 16px Cairo'),
+    document.fonts.load('800 18px Cairo'),
+    document.fonts.load('800 20px Cairo'),
   ])
   const width = 840
   const height = 1188
@@ -3704,26 +4253,81 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
   const rowHeight = 32
   const tableLeft = 40
   const tableRight = 800
-  const tableTop = 210
-  const pageRowCounts = invoicePageRowCounts(data.rows.length)
-  const pageCount = pageRowCounts.length
+  const tableTop = 278
+  const exportPayments = invoiceExportPayments(data)
+  const hasPaymentsSection = exportPayments.length > 0
+  const measureContext = document.createElement('canvas').getContext('2d')
+  if (!measureContext) throw new Error('Canvas unavailable')
+  const paymentRows = invoicePaymentDisplayRows(
+    measureContext,
+    exportPayments,
+    tableRight - tableLeft - 12,
+  )
+  const exportNote = (data.exportNote || '').trim()
+  const summaryBottomLimit = exportNote ? 1090 : 1120
+  const summaryHeight = invoiceSummaryBlockHeight(true, true, hasPaymentsSection, paymentRows)
+  const singlePageSummaryGap = 12
+  const multiPageSummaryGap = 26
+  const finalCapacityForGap = (gap: number) => Math.max(0, Math.min(
+    invoiceFinalPageCapacity,
+    Math.floor(
+      (summaryBottomLimit - summaryHeight - gap - tableTop - headerHeight) / rowHeight,
+    ),
+  ))
+  const singlePageFinalCapacity = finalCapacityForGap(singlePageSummaryGap)
+  const multiPageFinalCapacity = finalCapacityForGap(multiPageSummaryGap)
+  const servicePageRowCounts = invoicePageRowCounts(
+    data.rows.length,
+    singlePageFinalCapacity,
+    multiPageFinalCapacity,
+  )
+  const firstSummaryTopGap = data.rows.length > singlePageFinalCapacity
+    ? multiPageSummaryGap
+    : singlePageSummaryGap
+  const summaryPages = invoiceSummaryPagePlans(
+    paymentRows,
+    hasPaymentsSection,
+    summaryBottomLimit - tableTop - firstSummaryTopGap,
+    summaryBottomLimit - tableTop - singlePageSummaryGap,
+  )
+  const lastServicePageIndex = servicePageRowCounts.length - 1
+  const pagePlans = servicePageRowCounts.map((serviceRowCount, pageIndex) => {
+    const isSummaryPage = pageIndex === lastServicePageIndex
+    return {
+      serviceRowCount,
+      tableRowCount: serviceRowCount === 0
+        ? 0
+        : isSummaryPage && summaryPages.length === 1
+          ? serviceRowCount
+          : invoiceContinuationPageCapacity,
+      summary: isSummaryPage ? summaryPages[0] : null,
+    }
+  })
+  summaryPages.slice(1).forEach((summary) => {
+    pagePlans.push({ serviceRowCount: 0, tableRowCount: 0, summary })
+  })
+  const pageCount = pagePlans.length
   const hasNotes = data.rows.some((row) => row.notes.trim())
+  const valueColumnWidth = hasNotes ? 117 : 376 / 3
   const columns = [
     { title: 'م', width: 42, key: 'number' },
     { title: 'اسم الخدمة', width: hasNotes ? 237 : 342, key: 'name' },
-    { title: 'الوحدة', width: 78, key: 'unit' },
-    { title: 'الكمية', width: 70, key: 'quantity' },
-    { title: 'سعر الوحدة ($)', width: 96, key: 'unitPrice' },
-    { title: 'الإجمالي ($)', width: hasNotes ? 107 : 132, key: 'total' },
+    { title: 'سعر الوحدة ($)', width: valueColumnWidth, key: 'unitPrice' },
+    { title: 'الكمية', width: valueColumnWidth, key: 'quantity' },
+    { title: 'الإجمالي ($)', width: valueColumnWidth, key: 'total' },
     ...(hasNotes ? [{ title: 'الملاحظات', width: 130, key: 'notes' }] : []),
   ]
   const canvases: HTMLCanvasElement[] = []
   let rowOffset = 0
 
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
-    const isFinalPage = pageIndex === pageCount - 1
-    const pageSize = isFinalPage ? invoiceFinalPageCapacity : invoiceContinuationPageCapacity
-    const pageRows = data.rows.slice(rowOffset, rowOffset + pageRowCounts[pageIndex])
+    const pagePlan = pagePlans[pageIndex]
+    const isSummaryOnlyPage = pagePlan.serviceRowCount === 0
+    const hasCompletionNotice = Boolean(
+      pagePlan.summary?.includeTotals && data.rows.length > 0 && pageIndex > 0,
+    )
+    const pageRows = data.rows.slice(rowOffset, rowOffset + pagePlan.serviceRowCount)
+    const tableRowCount = pagePlan.tableRowCount
     const pageRowOffset = rowOffset
     rowOffset += pageRows.length
     const canvas = document.createElement('canvas')
@@ -3740,351 +4344,167 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
     context.strokeRect(20, 20, width - 40, height - 40)
 
     context.textAlign = 'center'
-    context.fillStyle = '#203044'
-    context.font = '800 26px "Cairo", sans-serif'
-    context.fillText('الكردي لأعمال البلاط والسيراميك والرخام', width / 2, 68)
+    const companyDividerY = drawInvoiceCompanyBranding(context, width)
+    const invoiceTitleY = companyDividerY === null ? 118 : Math.max(129, companyDividerY + 31)
     context.fillStyle = '#007d79'
     context.font = '700 19px "Cairo", sans-serif'
-    context.fillText('فاتورة حساب للأعمال المنفذة', width / 2, 108)
+    context.fillText('فاتورة حساب للأعمال المنفذة', width / 2, invoiceTitleY)
     const customerSegments = customerDetailsSegments(data)
-    const teacherSegments = responsibleTeacherSegments(data.responsibleTeacherName)
-    const customerY = 138
-    drawDetailSegments(context, width, customerY, customerSegments)
-    const teacherY = customerSegments.length ? customerY + 24 : customerY
-    drawDetailSegments(context, width, teacherY, teacherSegments)
+    const workshopTeacherLines = workshopTeacherSegments(data.workshopName, data.responsibleTeacherName)
+    const customerY = companyDividerY === null ? 138 : invoiceTitleY + 29
+    drawDetailSegments(context, width, customerY, customerSegments, true)
+    const teacherY = customerSegments.length
+      ? customerY + (companyDividerY === null ? 24 : 32)
+      : customerY
+    drawDetailSegments(context, width, teacherY, workshopTeacherLines, true)
     context.textAlign = 'left'
     context.fillStyle = '#a64b37'
     context.font = '700 13px "Cairo", sans-serif'
-    context.fillText(`رقم الفاتورة: ${data.invoiceNumber}`, tableLeft, 55)
-    const dateY = teacherSegments.length
-      ? teacherY + 24
-      : customerSegments.length
-        ? customerY + 26
-        : 164
+    context.fillText(`رقم الفاتورة: ${data.invoiceNumber}`, tableLeft, invoiceTitleY)
+    context.textAlign = 'right'
+    context.fillStyle = '#111111'
+    context.font = '800 13px "Cairo", sans-serif'
+    context.fillText(`صفحة ${pageIndex + 1} من ${pageCount}`, tableRight, invoiceTitleY)
+    const dateY = workshopTeacherLines.length
+      ? teacherY + (companyDividerY === null ? 24 : 32)
+      : customerY + (companyDividerY === null ? 26 : 34)
     drawDetailSegments(context, width, dateY, [
       { text: 'تاريخ الإصدار: ', red: false },
       { text: formatInvoicePrintDateTime(data.exportDate), red: true },
-    ])
+    ], true)
     context.textAlign = 'center'
-    context.fillStyle = '#a64b37'
-    context.font = '600 13px "Cairo", sans-serif'
-    const noticeLines = wrapCanvasText(
-      context,
+    context.fillStyle = '#111111'
+    context.font = '800 14px "Cairo", sans-serif'
+    const noticeY = (data.exportNote || '').trim() && pageIndex === pageCount - 1 ? 1158 : 1144
+    context.fillText(
       'تنويه: هذه فاتورة حساب عن أعمال تم تنفيذها، وتوضح قيمة الخدمات المنفذة وفق البيانات أعلاه.',
+      width / 2,
+      noticeY,
       tableRight - tableLeft,
     )
-    const displayedNoticeLines = noticeLines.slice(0, 2)
-    const noticeStartY = 1110 - (displayedNoticeLines.length - 1) * 16
-    displayedNoticeLines.forEach((line, index) =>
-      context.fillText(line, width / 2, noticeStartY + index * 16, tableRight - tableLeft))
 
-    const headerY = tableTop
-    columns.reduce((right, column) => {
-      const left = right - column.width
-      context.fillStyle = '#007d79'
-      context.fillRect(left, headerY, column.width, headerHeight)
-      context.strokeStyle = '#000000'
-      context.lineWidth = 1
-      context.strokeRect(left, headerY, column.width, headerHeight)
-      context.fillStyle = '#ffffff'
-      context.font = '700 12px "Cairo", sans-serif'
-      context.textAlign = 'center'
-      context.fillText(column.title, left + column.width / 2, headerY + 27, column.width - 8)
-      return left
-    }, tableRight)
-
-    for (let rowIndex = 0; rowIndex < pageSize; rowIndex += 1) {
-      const row = pageRows[rowIndex]
-      const y = tableTop + headerHeight + rowIndex * rowHeight
-      context.fillStyle = rowIndex % 2 === 0 ? '#f3f9f8' : '#f6f8fb'
-      context.fillRect(tableLeft, y, tableRight - tableLeft, rowHeight)
-      context.strokeStyle = '#000000'
-      context.lineWidth = 1
-      context.strokeRect(tableLeft, y, tableRight - tableLeft, rowHeight)
-      let right = tableRight
-      columns.forEach((column) => {
+    if (pageRows.length > 0) {
+      const headerY = tableTop
+      columns.reduce((right, column) => {
         const left = right - column.width
-        context.strokeRect(left, y, column.width, rowHeight)
-        const value = column.key === 'number'
-          ? row ? String(pageRowOffset + rowIndex + 1) : ''
-          : !row
-            ? ''
-            : column.key === 'name'
-              ? row.name
-              : column.key === 'notes'
-                ? row.notes.trim() || '—'
-                : column.key === 'unit'
-                  ? row.unit
+        context.fillStyle = '#007d79'
+        context.fillRect(left, headerY, column.width, headerHeight)
+        context.strokeStyle = '#000000'
+        context.lineWidth = 1
+        context.strokeRect(left, headerY, column.width, headerHeight)
+        context.fillStyle = '#ffffff'
+        context.font = '700 12px "Cairo", sans-serif'
+        context.textAlign = 'center'
+        context.fillText(column.title, left + column.width / 2, headerY + 27, column.width - 8)
+        return left
+      }, tableRight)
+
+      for (let rowIndex = 0; rowIndex < tableRowCount; rowIndex += 1) {
+        const row = pageRows[rowIndex]
+        const y = tableTop + headerHeight + rowIndex * rowHeight
+        context.fillStyle = rowIndex % 2 === 0 ? '#f3f9f8' : '#f6f8fb'
+        context.fillRect(tableLeft, y, tableRight - tableLeft, rowHeight)
+        context.strokeStyle = '#000000'
+        context.lineWidth = 1
+        context.strokeRect(tableLeft, y, tableRight - tableLeft, rowHeight)
+        let right = tableRight
+        columns.forEach((column) => {
+          const left = right - column.width
+          context.strokeRect(left, y, column.width, rowHeight)
+          const value = column.key === 'number'
+            ? row ? String(pageRowOffset + rowIndex + 1) : ''
+            : !row
+              ? ''
+              : column.key === 'name'
+                ? row.name
+                : column.key === 'notes'
+                  ? row.notes.trim() || '—'
                   : column.key === 'quantity'
-                    ? invoiceQuantity(row.quantity)
+                    ? `${invoiceQuantity(row.quantity)}${row.unit ? ` ${row.unit}` : ''}`
                     : column.key === 'unitPrice'
-                      ? money(row.unitPrice)
+                      ? `${money(row.unitPrice)} $`
                       : `${money(row.total)} $`
-        context.fillStyle = '#203044'
-        const isTextColumn = column.key === 'name' || column.key === 'notes'
-        context.textAlign = isTextColumn ? 'right' : 'center'
-        const maxWidth = column.width - (isTextColumn ? 14 : 8)
-        let fontSize = 12
-        let lines: string[]
-        do {
-          context.font = `700 ${fontSize}px "Cairo", sans-serif`
-          lines = wrapCanvasText(context, value, maxWidth)
-          if (lines.length <= 2 || fontSize === 9) break
-          fontSize -= 1
-        } while (true)
-        if (lines.length > 2) {
-          lines = lines.slice(0, 2)
-          let lastLine = lines[1] ?? ''
-          while (lastLine && context.measureText(`${lastLine}…`).width > maxWidth) {
-            lastLine = lastLine.slice(0, -1)
+          context.fillStyle = '#203044'
+          const isTextColumn = column.key === 'name' || column.key === 'notes'
+          context.textAlign = isTextColumn ? 'right' : 'center'
+          const maxWidth = column.width - (isTextColumn ? 14 : 8)
+          let fontSize = 12
+          let lines: string[]
+          do {
+            context.font = `700 ${fontSize}px "Cairo", sans-serif`
+            lines = wrapCanvasText(context, value, maxWidth)
+            if (lines.length <= 2 || fontSize === 9) break
+            fontSize -= 1
+          } while (true)
+          if (lines.length > 2) {
+            lines = lines.slice(0, 2)
+            let lastLine = lines[1] ?? ''
+            while (lastLine && context.measureText(`${lastLine}…`).width > maxWidth) {
+              lastLine = lastLine.slice(0, -1)
+            }
+            lines[1] = `${lastLine}…`
           }
-          lines[1] = `${lastLine}…`
-        }
-        context.font = `700 ${fontSize}px "Cairo", sans-serif`
-        const textX = isTextColumn ? right - 7 : left + column.width / 2
-        const lineHeight = fontSize + 1
-        const firstBaseline = y + (rowHeight - lines.length * lineHeight) / 2 + fontSize * .85
-        lines.forEach((line, lineIndex) =>
-          context.fillText(line, textX, firstBaseline + lineIndex * lineHeight, maxWidth))
-        right = left
-      })
+          context.font = `700 ${fontSize}px "Cairo", sans-serif`
+          const textX = isTextColumn ? right - 7 : left + column.width / 2
+          const lineHeight = fontSize + 1
+          const firstBaseline = y + (rowHeight - lines.length * lineHeight) / 2 + fontSize * .85
+          lines.forEach((line, lineIndex) =>
+            context.fillText(line, textX, firstBaseline + lineIndex * lineHeight, maxWidth))
+          right = left
+        })
+      }
     }
 
-    if (pageIndex === pageCount - 1) {
-      const tableBottomY = tableTop + headerHeight + pageSize * rowHeight
-      const exportPayments = (data.payments && data.payments.length
-        ? data.payments
-        : (data.upfrontPayment !== null && data.upfrontPayment > 0
-          ? [{ amount: data.upfrontPayment, date: data.upfrontPaymentDate || '', note: '', createdAt: '' }]
-          : [])).filter((payment) => payment.amount > 0)
-      const hasPaymentsSection = exportPayments.length > 0
-      const quantitySectionY = tableBottomY + (hasPaymentsSection ? 4 : 12)
-      const quantityTitleHeight = hasPaymentsSection ? 20 : 24
-      const quantityCellHeight = 24
-      context.fillStyle = '#007d79'
-      context.fillRect(tableLeft, quantitySectionY, tableRight - tableLeft, quantityTitleHeight)
-      context.strokeStyle = '#c6a253'
-      context.lineWidth = 1
-      context.strokeRect(tableLeft, quantitySectionY, tableRight - tableLeft, quantityTitleHeight)
+    const tableBottomY = pageRows.length > 0
+      ? tableTop + headerHeight + tableRowCount * rowHeight
+      : tableTop
+    if (hasCompletionNotice) {
       context.textAlign = 'center'
-      context.fillStyle = '#ffffff'
+      context.fillStyle = '#52616d'
       context.font = '700 12px "Cairo", sans-serif'
-      context.textBaseline = 'middle'
       context.fillText(
-        'إجمالي مساحة الأعمال المنفذة للورشة:',
+        isSummaryOnlyPage ? 'اكتملت الخدمات في الصفحة السابقة' : 'اكتملت الخدمات في هذه الصفحة',
         width / 2,
-        quantitySectionY + quantityTitleHeight / 2,
-        tableRight - tableLeft - 12,
+        tableBottomY + 14,
       )
-      context.textBaseline = 'alphabetic'
-      const quantityCellY = quantitySectionY + quantityTitleHeight
-      context.fillStyle = '#f3f9f8'
-      context.fillRect(tableLeft, quantityCellY, tableRight - tableLeft, quantityCellHeight)
-      context.strokeStyle = '#c6a253'
-      context.strokeRect(tableLeft, quantityCellY, tableRight - tableLeft, quantityCellHeight)
-      const quantitySummary = data.unitTotals.map(({ unit, quantity, amount }) =>
-        `${invoiceQuantity(quantity)} ${unit} = ${amount === null ? '—' : `${money(amount)} $`}`).join('  |  ')
-      let quantityFontSize = 11
-      context.fillStyle = '#203044'
-      context.textAlign = 'center'
-      do {
-        context.font = `700 ${quantityFontSize}px "Cairo", sans-serif`
-        if (context.measureText(quantitySummary).width <= tableRight - tableLeft - 16 || quantityFontSize === 7) break
-        quantityFontSize -= 1
-      } while (true)
-      context.fillText(quantitySummary, width / 2, quantityCellY + quantityCellHeight / 2 + quantityFontSize / 3, tableRight - tableLeft - 16)
+    }
 
-      const financialTitleY = quantityCellY + quantityCellHeight + (hasPaymentsSection ? 4 : 8)
-      const financialTitleHeight = hasPaymentsSection ? 18 : 22
-      context.fillStyle = '#e8f5f2'
-      context.fillRect(tableLeft, financialTitleY, tableRight - tableLeft, financialTitleHeight)
-      context.strokeStyle = '#c6a253'
-      context.strokeRect(tableLeft, financialTitleY, tableRight - tableLeft, financialTitleHeight)
+    if (!pagePlan.summary && pagePlan.serviceRowCount > 0) {
+      const hasRemainingServices = pageRowOffset + pageRows.length < data.rows.length
       context.textAlign = 'center'
       context.fillStyle = '#006e69'
       context.font = '700 12px "Cairo", sans-serif'
-      context.textBaseline = 'middle'
-      context.fillText('حساب إجمالي الفاتورة', width / 2, financialTitleY + financialTitleHeight / 2)
-      context.textBaseline = 'alphabetic'
-      const moneySummaryY = financialTitleY + financialTitleHeight + (hasPaymentsSection ? 2 : 4)
-      const discount = data.discount
-      const hasDiscount = Boolean(discount?.amount)
-      const finalTotal = data.total - (discount?.amount || 0)
-      const summaryCards: Array<{ label: string; value: string; fill: string; color: string }> = hasDiscount && discount
-        ? [
-          { label: 'الإجمالي قبل الخصم', value: `${money(data.total)} $`, fill: '#e8f5f2', color: '#006e69' },
-          { label: discount.mode === 'percentage' ? `الخصم (${discount.value}%)` : 'قيمة الخصم', value: `${money(discount.amount)} $`, fill: '#fff0ed', color: '#c62828' },
-          { label: 'الإجمالي بعد الخصم', value: `${money(finalTotal)} $`, fill: '#e8f5f2', color: '#006e69' },
-        ]
-        : []
-      if (!hasDiscount) {
-        summaryCards.push({
-          label: 'الإجمالي النهائي',
-          value: `${money(finalTotal)} $`,
-          fill: '#e8f5f2',
-          color: '#006e69',
-        })
-      }
-      const cardGap = 8
-      const summaryWidth = tableRight - tableLeft
-      const cardWidth = (summaryWidth - cardGap * (summaryCards.length - 1)) / summaryCards.length
-      let right = tableRight
-      const cardHeight = hasPaymentsSection ? 48 : 58
-      summaryCards.forEach((card) => {
-        const left = right - cardWidth
-        context.fillStyle = card.fill
-        context.fillRect(left, moneySummaryY, cardWidth, cardHeight)
-        context.strokeStyle = card.color === '#c62828' ? card.color : '#c6a253'
-        context.lineWidth = 1
-        context.strokeRect(left, moneySummaryY, cardWidth, cardHeight)
-        context.textAlign = 'center'
-        context.fillStyle = card.color
-        context.font = '700 12px "Cairo", sans-serif'
-        context.fillText(card.label, left + cardWidth / 2, moneySummaryY + (hasPaymentsSection ? 16 : 22), cardWidth - 10)
-        context.font = '800 15px "Cairo", sans-serif'
-        const valueBaseline = moneySummaryY + (hasPaymentsSection ? 36 : 45)
-        if (!hasDiscount || card.label === 'الإجمالي بعد الخصم') {
-          const valueBoxWidth = Math.min(cardWidth - 16, context.measureText(card.value).width + 20)
-          const valueBoxHeight = hasPaymentsSection ? 20 : 24
-          const valueBoxY = valueBaseline - (hasPaymentsSection ? 15 : 17)
-          context.strokeStyle = '#c62828'
-          context.lineWidth = 2
-          context.strokeRect(left + cardWidth / 2 - valueBoxWidth / 2, valueBoxY, valueBoxWidth, valueBoxHeight)
-        }
-        context.fillText(card.value, left + cardWidth / 2, valueBaseline, cardWidth - 10)
-        right = left - cardGap
-      })
-      if (hasPaymentsSection) {
-        const paymentsTitleY = moneySummaryY + cardHeight + 4
-        const paymentsTitleHeight = 18
-        context.fillStyle = '#007d79'
-        context.fillRect(tableLeft, paymentsTitleY, tableRight - tableLeft, paymentsTitleHeight)
-        context.strokeStyle = '#c6a253'
-        context.strokeRect(tableLeft, paymentsTitleY, tableRight - tableLeft, paymentsTitleHeight)
-        context.textAlign = 'center'
-        context.fillStyle = '#ffffff'
-        context.font = '700 11px "Cairo", sans-serif'
-        context.fillText('الدفعات والمتبقي', width / 2, paymentsTitleY + 13)
-
-        const paidTotal = exportPayments.reduce((sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0), 0)
-        const remainingAmount = Number(Math.max(0, finalTotal - paidTotal).toFixed(2))
-        const isFullyPaid = remainingAmount <= 0.00001
-        const lastPayment = exportPayments[exportPayments.length - 1]
-        const paymentsAreaY = paymentsTitleY + paymentsTitleHeight + 4
-        const totalWidth = tableRight - tableLeft
-        if (exportPayments.length === 1) {
-          const payment = exportPayments[0]
-          const paymentCellHeight = 44
-          const paymentCellWidth = totalWidth / 3
-          const paymentCells = [
-            {
-              left: tableLeft + paymentCellWidth * 2,
-              label: 'الدفعة',
-              value: `${money(payment.amount)} $`,
-              sublabel: payment.date ? `تاريخ الدفعة: ${payment.date}` : '',
-              fill: '#f3f9f8',
-              settled: false,
-            },
-            {
-              left: tableLeft + paymentCellWidth,
-              label: 'إجمالي الدفعات',
-              value: `${money(paidTotal)} $`,
-              sublabel: '',
-              fill: '#e8f5f2',
-              settled: false,
-            },
-            {
-              left: tableLeft,
-              label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
-              value: isFullyPaid ? '' : `${money(remainingAmount)} $`,
-              sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
-              fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
-              labelColor: isFullyPaid ? '#166534' : '#c2410c',
-              valueColor: isFullyPaid ? '#166534' : '#c2410c',
-              stroke: isFullyPaid ? '#86efac' : '#fdba74',
-              settled: isFullyPaid,
-            },
-          ]
-          paymentCells.forEach((cell) => {
-            context.fillStyle = cell.fill
-            context.fillRect(cell.left, paymentsAreaY, paymentCellWidth, paymentCellHeight)
-            context.strokeStyle = cell.stroke || '#c6a253'
-            context.strokeRect(cell.left, paymentsAreaY, paymentCellWidth, paymentCellHeight)
-            context.textAlign = 'center'
-            context.fillStyle = cell.labelColor || '#006e69'
-            context.font = '700 10px "Cairo", sans-serif'
-            context.fillText(cell.label, cell.left + paymentCellWidth / 2, paymentsAreaY + 12, paymentCellWidth - 10)
-            if (cell.value) {
-              context.fillStyle = cell.valueColor || '#006e69'
-              context.font = '800 14px "Cairo", sans-serif'
-              context.fillText(cell.value, cell.left + paymentCellWidth / 2, paymentsAreaY + 28, paymentCellWidth - 10)
-            }
-            if (cell.sublabel) {
-              context.fillStyle = cell.settled ? '#166534' : '#667782'
-              context.font = cell.settled ? '700 10px "Cairo", sans-serif' : '600 8px "Cairo", sans-serif'
-              context.fillText(cell.sublabel, cell.left + paymentCellWidth / 2, paymentsAreaY + (cell.settled ? 32 : 40), paymentCellWidth - 10)
-            }
-          })
-        } else {
-          const paymentCards = [
-            ...exportPayments.map((payment, index) => ({
-              label: exportPayments.length > 1 ? `الدفعة ${index + 1}` : 'الدفعة',
-              value: `${money(payment.amount)} $`,
-              sublabel: [payment.date ? `التاريخ: ${payment.date}` : '', payment.note || ''].filter(Boolean).join(' — '),
-              fill: '#f3f9f8',
-              valueColor: '#203044',
-              labelColor: '#006e69',
-              settled: false,
-            })),
-            {
-              label: 'إجمالي الدفعات',
-              value: `${money(paidTotal)} $`,
-              sublabel: '',
-              fill: '#e8f5f2',
-              valueColor: '#203044',
-              labelColor: '#006e69',
-              settled: false,
-            },
-            {
-              label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
-              value: isFullyPaid ? '' : `${money(remainingAmount)} $`,
-              sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
-              fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
-              valueColor: isFullyPaid ? '#166534' : '#c2410c',
-              labelColor: isFullyPaid ? '#166534' : '#c2410c',
-              settled: isFullyPaid,
-            },
-          ]
-          const cardGap = 8
-          const paymentCardWidth = (totalWidth - cardGap * (paymentCards.length - 1)) / paymentCards.length
-          const paymentCardHeight = 44
-          let cardRight = tableRight
-          paymentCards.forEach((card) => {
-            const left = cardRight - paymentCardWidth
-            context.fillStyle = card.fill
-            context.fillRect(left, paymentsAreaY, paymentCardWidth, paymentCardHeight)
-            context.strokeStyle = '#c6a253'
-            context.lineWidth = 1
-            context.strokeRect(left, paymentsAreaY, paymentCardWidth, paymentCardHeight)
-            context.textAlign = 'center'
-            context.fillStyle = card.labelColor
-            context.font = '700 10px "Cairo", sans-serif'
-            context.fillText(card.label, left + paymentCardWidth / 2, paymentsAreaY + 12, paymentCardWidth - 10)
-            context.fillStyle = card.valueColor
-            context.font = '800 14px "Cairo", sans-serif'
-            context.fillText(card.value, left + paymentCardWidth / 2, paymentsAreaY + 28, paymentCardWidth - 10)
-            if (card.sublabel) {
-              context.fillStyle = card.settled ? '#166534' : '#667782'
-              context.font = card.settled ? '700 10px "Cairo", sans-serif' : '600 8px "Cairo", sans-serif'
-              context.fillText(card.sublabel, left + paymentCardWidth / 2, paymentsAreaY + (card.settled ? 32 : 40), paymentCardWidth - 10)
-            }
-            cardRight = left - cardGap
-          })
-        }
-      }
+      context.fillText(
+        hasRemainingServices ? 'يتبع جدول الخدمات في الصفحة التالية' : 'ملخص الفاتورة في الصفحة التالية',
+        width / 2,
+        1118,
+        tableRight - tableLeft,
+      )
     }
 
-    const exportNote = (data.exportNote || '').trim()
+    if (pagePlan.summary) {
+      const summaryTop = tableBottomY + (
+        hasCompletionNotice ? multiPageSummaryGap : singlePageSummaryGap
+      )
+      drawInvoiceSummary(
+        context,
+        data,
+        exportPayments,
+        pagePlan.summary,
+        hasPaymentsSection,
+        tableLeft,
+        tableRight,
+        summaryTop,
+      )
+    }
+
+    if (pagePlan.summary && pageIndex < pageCount - 1) {
+      context.textAlign = 'center'
+      context.fillStyle = '#006e69'
+      context.font = '700 12px "Cairo", sans-serif'
+      context.fillText('يتبع سجل الدفعات في الصفحة التالية', width / 2, 1118, tableRight - tableLeft)
+    }
+
     const isLastPage = pageIndex === pageCount - 1
     if (exportNote && isLastPage) {
       context.textAlign = 'center'
@@ -4099,14 +4519,6 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
       })
     }
 
-    context.textAlign = 'center'
-    context.fillStyle = '#667782'
-    context.font = '600 11px "Cairo", sans-serif'
-    context.fillText(
-      `صفحة ${pageIndex + 1} من ${pageCount}`,
-      width / 2,
-      exportNote && isLastPage ? 1158 : 1144,
-    )
     canvases.push(canvas)
   }
   return canvases
@@ -4269,7 +4681,7 @@ function invoiceRecordToExportData(record: InvoiceRecord): InvoiceExportData {
     customerAddress: record.customerAddress || '',
     customerNeighborhood: customers.find((customer) => customer.id === record.customerId)?.neighborhood || '',
     workshopName: record.workshopName || '',
-    responsibleTeacherName: record.responsibleTeacherName || '',
+    responsibleTeacherName: record.responsibleTeacherName || accountProfile.name,
     upfrontPayment: lastPayment ? lastPayment.amount : null,
     upfrontPaymentDate: lastPayment?.date || '',
     payments,
@@ -4740,7 +5152,10 @@ function openInvoiceCustomerExportDialog(
     if (phoneInput) phoneInput.disabled = true
     if (addressInput) addressInput.disabled = true
   }
-  if (responsibleTeacherInput) responsibleTeacherInput.value = data.responsibleTeacherName || ''
+  if (responsibleTeacherInput) {
+    data.responsibleTeacherName = data.responsibleTeacherName || accountProfile.name
+    responsibleTeacherInput.value = data.responsibleTeacherName
+  }
   if (workshopNameInput) workshopNameInput.value = data.workshopName || ''
   if (exportNoteInput) exportNoteInput.value = data.exportNote || ''
   formatInputs.forEach((input) => { input.checked = input.value === data.exportFormat })
@@ -5689,7 +6104,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       customerAddress: '',
       customerNeighborhood: '',
       workshopName: '',
-      responsibleTeacherName: '',
+      responsibleTeacherName: accountProfile.name,
       upfrontPayment: null,
       upfrontPaymentDate: '',
       exportNote: '',
@@ -5862,7 +6277,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           data.customerAddress = sourceRecord.customerAddress
           data.customerNeighborhood = customers.find((customer) => customer.id === data.customerId)?.neighborhood || ''
           data.workshopName = sourceRecord.workshopName || ''
-          data.responsibleTeacherName = sourceRecord.responsibleTeacherName
+          data.responsibleTeacherName = sourceRecord.responsibleTeacherName || accountProfile.name
           data.discount = sourceRecord.discount ? { ...sourceRecord.discount } : null
           data.exportFormat = sourceRecord.exportFormat
         }
@@ -6072,6 +6487,27 @@ async function loadSettings(user: User, ownerId: string, sessionId: number) {
   }
 }
 
+async function loadAccountProfile(user: User, ownerId: string, sessionId: number) {
+  const fallback = accountProfileForUser(user, null)
+  accountProfile = fallback
+  accountProfileReady = false
+  try {
+    const snapshot = await getDoc(doc(db, 'users', ownerId, 'accountProfiles', user.uid))
+    if (currentUser?.uid !== user.uid || dataUserId !== ownerId || authSessionId !== sessionId) return
+    if (accountProfileReady) return
+    accountProfile = snapshot.exists() ? accountProfileForUser(user, snapshot.data()) : fallback
+    accountProfileReady = true
+  } catch (loadError) {
+    if (currentUser?.uid !== user.uid || dataUserId !== ownerId || authSessionId !== sessionId) return
+    if (!accountProfileReady) {
+      accountProfile = fallback
+      accountProfileReady = true
+      console.error('Failed to load account profile:', loadError)
+      showToast(`تعذر تحميل بيانات الحساب: ${friendlyError(loadError)}`)
+    }
+  }
+}
+
 async function startAuth() {
   applyTheme(true)
   renderBootstrap()
@@ -6086,6 +6522,8 @@ async function startAuth() {
     currentUser = user
     dataUserId = ownerId
     const sessionId = authSessionId
+    accountProfile = user ? accountProfileForUser(user, null) : { name: '', phone: '' }
+    accountProfileReady = false
     unsubscribeServices()
     unsubscribeCustomers()
     unsubscribeInvoices()
@@ -6097,12 +6535,16 @@ async function startAuth() {
     invoiceRecords = []
     activeMainSection = 'services'
     if (!user) {
+      document.querySelectorAll<HTMLElement>('.modal-backdrop').forEach((backdrop) => backdrop.remove())
       settings = defaultSettings
       applyTheme(true)
       renderAuth()
       return
     }
-    await loadSettings(user, ownerId, sessionId)
+    await Promise.all([
+      loadSettings(user, ownerId, sessionId),
+      loadAccountProfile(user, ownerId, sessionId),
+    ])
     if (currentUser?.uid !== user.uid || dataUserId !== ownerId || authSessionId !== sessionId) return
     renderProductsShell()
     const servicesQuery = query(collection(db, 'users', ownerId, 'services'))
