@@ -450,9 +450,18 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   outline-offset: 2px;
 }
 .account-statement-modal {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   width: 100%;
   max-width: 680px;
   margin: 0 auto;
+}
+.account-statement-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 .account-statement-modal h2 {
   margin: 2px 0 8px;
@@ -689,6 +698,10 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   border-top: 1px solid var(--line);
   padding-top: 14px;
 }
+.account-statement-modal > .account-statement-actions {
+  flex: 0 0 auto;
+  background: #fff;
+}
 .account-export-confirmation {
   width: 100%;
   max-width: 560px;
@@ -880,8 +893,12 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 12px; background: #14233366; backdrop-filter: blur(3px); }
 .modal { position: relative; box-sizing: border-box; width: min(calc(100vw - 24px), 720px); max-height: calc(100dvh - 24px); overflow: auto; border-radius: 20px; background: #fff; padding: 28px 22px 24px; box-shadow: 0 18px 55px #20304440; }
 .modal-backdrop:has(.account-statement-modal) > .modal {
-  width: min(calc(100vw - 24px), 720px);
+  display: flex;
+  flex-direction: column;
+  height: min(820px, calc(100dvh - 24px));
+  width: min(100%, 720px);
   max-height: calc(100dvh - 24px);
+  overflow: hidden;
 }
 .modal:has(.settings-tabs) {
   width: min(calc(100vw - 24px), 620px);
@@ -2475,6 +2492,10 @@ body.dark-mode .account-statement-summary > div.is-due { border-color: #684b2d; 
 body.dark-mode .account-statement-section-head h3,
 body.dark-mode .account-invoice-head strong,
 body.dark-mode .account-invoice-financials strong { color: #e6edf3; }
+body.dark-mode .account-statement-modal > .account-statement-actions {
+  border-top-color: #2b3b49;
+  background: #18232d;
+}
 body.dark-mode .account-statement-section-head > span,
 body.dark-mode .account-invoice-financials > div,
 body.dark-mode .account-statement-empty { border-color: #2b3b49; background: #202d37; }
@@ -2864,7 +2885,8 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
 @media (max-width: 599px) {
   .modal-backdrop:has(.account-statement-modal) { padding: 8px; }
   .modal-backdrop:has(.account-statement-modal) > .modal {
-    width: calc(100vw - 16px);
+    width: 100%;
+    height: calc(100dvh - 16px);
     max-height: calc(100dvh - 16px);
   }
   .account-statement-modal h2 { font-size: 20px; }

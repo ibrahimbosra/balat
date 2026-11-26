@@ -7,13 +7,13 @@
 في واجهات الويب المعروضة باتجاه RTL، تكون الصيغة المرئية المقبولة للمبلغ:
 
 ```text
-750 دولار
+750 $
 ```
 
 أي:
 
 - الرقم على اليمين بصريًا.
-- كلمة «دولار» على يسار الرقم بصريًا.
+- كلمة «$» على يسار الرقم بصريًا.
 - لا يتم فصل الرقم وكلمة العملة إلى عناصر متباعدة أو عناصر منفصلة.
 
 المعيار المرئي الأساسي هو الشكل الذي يظهر في تصدير الفاتورة.
@@ -23,19 +23,19 @@
 الكتابة الأساسية في نصوص التطبيق تكون بهذا الشكل:
 
 ```html
-<strong>750 دولار</strong>
+<strong>750 $</strong>
 ```
 
 أو باستخدام دالة تنسيق المبلغ داخل قالب TypeScript:
 
 ```ts
-const amountText = `${money(amount)} دولار`
+const amountText = formatUsdAmount(amount)
 ```
 
 لا يجب فصل الرقم وكلمة العملة بهذه الصيغة:
 
 ```html
-<span>دولار</span>
+<span>$</span>
 <span>750</span>
 ```
 
@@ -50,13 +50,13 @@ context.direction = 'rtl'
 context.textAlign = 'center'
 context.fillStyle = '#203044'
 context.font = '800 12px Cairo, sans-serif'
-context.fillText(`${money(payment.amount)} دولار`, x, y)
+context.fillText(`${money(payment.amount)} $`, x, y)
 ```
 
 الناتج المرئي المطلوب في الصورة:
 
 ```text
-750 دولار
+750 $
 ```
 
 ملاحظة مهمة: يعتمد ترتيب Canvas على اتجاه النص وخطوط `Cairo`. لذلك لا يجوز الاعتماد على الكود كنص فقط عند التحقق؛ يجب تصدير صورة فعلية وفحص موضع الكلمة بصريًا.
@@ -75,10 +75,10 @@ context.fillText(`${money(payment.amount)} دولار`, x, y)
 مثال موحّد:
 
 ```ts
-`${money(total)} دولار`
-`${money(paid)} دولار`
-`${money(remaining)} دولار`
-`${money(payment.amount)} دولار`
+formatUsdAmount(total)
+formatUsdAmount(paid)
+formatUsdAmount(remaining)
+formatUsdAmount(payment.amount)
 ```
 
 ## موضع الخلايا والطباعة
@@ -88,7 +88,7 @@ context.fillText(`${money(payment.amount)} دولار`, x, y)
 ```ts
 context.textAlign = 'center'
 context.fillText(
-  `${money(payment.amount)} دولار`,
+  `${money(payment.amount)} $`,
   cellX + cellWidth / 2,
   cellY + 18,
 )
@@ -96,16 +96,16 @@ context.fillText(
 
 لا يُستخدم محاذاة مستقلة للكلمة والرقم.
 
-## موضع الرقم والدولار بصريًا
+## موضع الرقم وال$ بصريًا
 
 تحتاج مقارنة الشكل المرئي، وليس ترتيب المتغيرات البرمجية فقط:
 
 ```text
-مطلوب بصريًا:   750 دولار
-غير مقبول:      دولار 750
+مطلوب بصريًا:   750 $
+غير مقبول:      $ 750
 ```
 
-في النسخة الحقيقية من التطبيق، أكد النظام المرئي أن `دولار` يظهر في يسار الرقم، كما هو موضح في تصدير الفاتورة.
+في النسخة الحقيقية من التطبيق، أكد النظام المرئي أن `$` يظهر في يسار الرقم، كما هو موضح في تصدير الفاتورة.
 
 ## دالة تنسيق المبالغ
 
@@ -123,7 +123,9 @@ const money = (value: number) =>
 إضافة العملة تتم في سلسلة النص نهائيًا:
 
 ```ts
-`${money(value)} دولار`
+export const USD_CURRENCY_SYMBOL = '$'
+export const formatUsdAmount = (value: number) =>
+  `${money(value)} ${USD_CURRENCY_SYMBOL}`
 ```
 
 ## ما لا يجوز تعديله
@@ -139,7 +141,7 @@ const money = (value: number) =>
 - ترتيب عناصر البطاقة أو الفاتورة.
 - تنسيق تصدير الفاتورة الأساسي.
 
-النطاق المسموح فقط هو موضع كلمة «دولار» بالنسبة إلى الرقم، مع الحفاظ على الصيغة الموحّدة أعلاه.
+النطاق المسموح فقط هو موضع كلمة «$» بالنسبة إلى الرقم، مع الحفاظ على الصيغة الموحّدة أعلاه.
 
 ## أمر الرجوع السريع
 
@@ -147,5 +149,5 @@ const money = (value: number) =>
 
 ```text
 اقرأ CURRENCY_POSITION_REFERENCE.md واتبع قواعده دون تغيير أي تنسيق آخر.
-اجعل كلمة دولار تظهر في يسار الرقم بصريًا وتبقى `750 دولار`.
+اجعل كلمة $ تظهر في يسار الرقم بصريًا وتبقى `750 $`.
 ```

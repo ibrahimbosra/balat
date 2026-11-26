@@ -196,6 +196,8 @@ const money = (value: number) =>
   Number.isFinite(value)
     ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)
     : '—'
+export const USD_CURRENCY_SYMBOL = '$'
+export const formatUsdAmount = (value: number) => `${money(value)} ${USD_CURRENCY_SYMBOL}`
 const invoiceQuantity = (value: number) =>
   Number.isFinite(value)
     ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(value)
@@ -626,8 +628,8 @@ function updateServicesShell() {
           <span class="service-unit">${escapeHtml(serviceUnitLabel(service.unit))}</span>
           <span class="service-details">
             <span class="service-price-cell">
-              <span class="service-price-label">السعر بالدولار</span>
-              <strong class="service-price">${Number.isFinite(dollarPrice) ? `${money(dollarPrice)} دولار` : 'غير متاح'}</strong>
+              <span class="service-price-label">السعر</span>
+              <strong class="service-price">${Number.isFinite(dollarPrice) ? formatUsdAmount(dollarPrice) : 'غير متاح'}</strong>
             </span>
             <span class="service-price-cell service-lira-cell">
               <span class="service-price-label">السعر بالليرة السورية</span>
@@ -715,15 +717,15 @@ function renderCustomersSection() {
               <span class="customer-financials" aria-label="الملخص المالي للزبون">
                 <span class="customer-financial-card customer-financial-card--total">
                   <span class="customer-financial-label">الإجمالي</span>
-                  <strong>${money(summary.total)} <small>دولار</small></strong>
+                  <strong>${formatUsdAmount(summary.total)}</strong>
                 </span>
                 <span class="customer-financial-card customer-financial-card--paid">
                   <span class="customer-financial-label">المسدد</span>
-                  <strong>${money(summary.paid)} <small>دولار</small></strong>
+                  <strong>${formatUsdAmount(summary.paid)}</strong>
                 </span>
                 <span class="customer-financial-card customer-financial-card--remaining ${summary.remaining <= 0.00001 ? 'is-clear' : 'is-due'}">
                   <span class="customer-financial-label">الباقي</span>
-                  <strong>${money(summary.remaining)} <small>دولار</small></strong>
+                  <strong>${formatUsdAmount(summary.remaining)}</strong>
                 </span>
               </span>
             </button>
@@ -775,88 +777,90 @@ function renderCustomerAccountStatement(customer: Customer) {
 
   const backdrop = modal(`
     <div class="account-statement-modal">
-      <button type="button" class="modal-close" data-close-account aria-label="إغلاق">${svg('close')}</button>
-      <p class="eyebrow">كشف حساب زبون</p>
-      <h2>${escapeHtml(customer.name)}</h2>
-      <div class="account-statement-contact">
-        ${customer.phone ? `<span class="account-contact-phone">${escapeHtml(customer.phone)}</span>` : ''}
-        ${customer.address ? `<span>${escapeHtml(customer.address)}</span>` : ''}
-        ${customer.neighborhood ? `<span>${escapeHtml(customer.neighborhood)}</span>` : ''}
-      </div>
-      ${customer.notes ? `<p class="account-statement-notes">${escapeHtml(customer.notes)}</p>` : ''}
-      <div class="account-statement-summary">
-        <div><span>إجمالي الفواتير</span><strong>${money(total)} <small>دولار</small></strong></div>
-        <div class="is-paid"><span>إجمالي المسدد</span><strong>${money(paid)} <small>دولار</small></strong></div>
-        <div class="${remaining <= 0.00001 ? 'is-clear' : 'is-due'}"><span>الرصيد المتبقي</span><strong>${money(remaining)} <small>دولار</small></strong></div>
-      </div>
-
-      <section class="account-statement-section">
-        <div class="account-statement-section-head">
-          <h3>سجل الدفعات</h3>
-          <span>${allPayments.length} دفعة</span>
+      <div class="account-statement-body">
+        <button type="button" class="modal-close" data-close-account aria-label="إغلاق">${svg('close')}</button>
+        <p class="eyebrow">كشف حساب زبون</p>
+        <h2>${escapeHtml(customer.name)}</h2>
+        <div class="account-statement-contact">
+          ${customer.phone ? `<span class="account-contact-phone">${escapeHtml(customer.phone)}</span>` : ''}
+          ${customer.address ? `<span>${escapeHtml(customer.address)}</span>` : ''}
+          ${customer.neighborhood ? `<span>${escapeHtml(customer.neighborhood)}</span>` : ''}
         </div>
-        ${allPayments.length ? `
-          <div class="account-payment-timeline">
-            ${allPayments.map((payment, paymentIndex) => `
-              <article class="account-payment-item">
-                <span class="account-payment-dot" aria-hidden="true"></span>
-                <div class="account-payment-main">
-                  <strong>${paymentIndex + 1}. ${money(payment.amount)} دولار</strong>
-                  ${payment.note ? `<p>${escapeHtml(payment.note)}</p>` : ''}
-                </div>
-                <div class="account-payment-meta">
-                  <span>${escapeHtml(payment.date || 'بدون تاريخ')}</span>
-                  <span>فاتورة ${escapeHtml(payment.invoiceNumber)}</span>
-                </div>
-              </article>
-            `).join('')}
+        ${customer.notes ? `<p class="account-statement-notes">${escapeHtml(customer.notes)}</p>` : ''}
+        <div class="account-statement-summary">
+          <div><span>إجمالي الفواتير</span><strong>${formatUsdAmount(total)}</strong></div>
+          <div class="is-paid"><span>إجمالي المسدد</span><strong>${formatUsdAmount(paid)}</strong></div>
+          <div class="${remaining <= 0.00001 ? 'is-clear' : 'is-due'}"><span>الرصيد المتبقي</span><strong>${formatUsdAmount(remaining)}</strong></div>
+        </div>
+
+        <section class="account-statement-section">
+          <div class="account-statement-section-head">
+            <h3>سجل الدفعات</h3>
+            <span>${allPayments.length} دفعة</span>
           </div>
-        ` : '<div class="account-statement-empty">لا توجد دفعات مسجلة لهذا الزبون.</div>'}
-      </section>
-
-      <section class="account-statement-section">
-        <div class="account-statement-section-head">
-          <h3>الفواتير المرتبطة</h3>
-          <span>${linkedInvoices.length} فاتورة</span>
-        </div>
-        ${linkedInvoices.length ? `
-          <div class="account-invoices-list">
-            ${linkedInvoices.map((record) => {
-              const net = getInvoiceNetTotal(record)
-              const invoicePaid = getInvoicePaidTotal(record)
-              const invoiceRemaining = getInvoiceRemainingTotal(record)
-              const status = getInvoicePaymentStatus(record)
-              return `
-                <article class="account-invoice-card">
-                  <div class="account-invoice-head">
-                    <strong>فاتورة رقم ${escapeHtml(record.rootInvoiceNumber || record.invoiceNumber)}${record.workshopName?.trim() ? ` | ورشة ${escapeHtml(record.workshopName.trim())}` : ''}</strong>
-                    <span class="invoice-status-badge is-${status.key}">${escapeHtml(status.label)}</span>
+          ${allPayments.length ? `
+            <div class="account-payment-timeline">
+              ${allPayments.map((payment, paymentIndex) => `
+                <article class="account-payment-item">
+                  <span class="account-payment-dot" aria-hidden="true"></span>
+                  <div class="account-payment-main">
+                    <strong>${paymentIndex + 1}. ${money(payment.amount)} $</strong>
+                    ${payment.note ? `<p>${escapeHtml(payment.note)}</p>` : ''}
                   </div>
-                  <div class="account-invoice-financials">
-                    <div><span>الإجمالي</span><strong>${money(net)} دولار</strong></div>
-                    <div><span>المسدد</span><strong>${money(invoicePaid)} دولار</strong></div>
-                    <div><span>الباقي</span><strong>${money(invoiceRemaining)} دولار</strong></div>
+                  <div class="account-payment-meta">
+                    <span>${escapeHtml(payment.date || 'بدون تاريخ')}</span>
+                    <span>فاتورة ${escapeHtml(payment.invoiceNumber)}</span>
                   </div>
-                  ${record.payments.length ? `
-                    <div class="account-invoice-payments">
-                      ${[...record.payments].sort((a, b) =>
-                        (a.date || '').localeCompare(b.date || '')
-                        || (a.createdAt || '').localeCompare(b.createdAt || '')
-                      ).map((payment, paymentIndex) => `
-                        <span><b>${paymentIndex + 1}. ${money(payment.amount)} دولار</b> — ${escapeHtml(payment.date || 'بدون تاريخ')}${payment.note ? ` — ${escapeHtml(payment.note)}` : ''}</span>
-                      `).join('')}
-                    </div>
-                  ` : '<span class="account-invoice-no-payments">لا توجد دفعات على هذه الفاتورة</span>'}
                 </article>
-              `
-            }).join('')}
+              `).join('')}
+            </div>
+          ` : '<div class="account-statement-empty">لا توجد دفعات مسجلة لهذا الزبون.</div>'}
+        </section>
+
+        <section class="account-statement-section">
+          <div class="account-statement-section-head">
+            <h3>الفواتير المرتبطة</h3>
+            <span>${linkedInvoices.length} فاتورة</span>
           </div>
-        ` : '<div class="account-statement-empty">لا توجد فواتير مرتبطة بهذا الزبون.</div>'}
-      </section>
+          ${linkedInvoices.length ? `
+            <div class="account-invoices-list">
+              ${linkedInvoices.map((record) => {
+                const net = getInvoiceNetTotal(record)
+                const invoicePaid = getInvoicePaidTotal(record)
+                const invoiceRemaining = getInvoiceRemainingTotal(record)
+                const status = getInvoicePaymentStatus(record)
+                return `
+                  <article class="account-invoice-card">
+                    <div class="account-invoice-head">
+                      <strong>فاتورة رقم ${escapeHtml(record.rootInvoiceNumber || record.invoiceNumber)}${record.workshopName?.trim() ? ` | ورشة ${escapeHtml(record.workshopName.trim())}` : ''}</strong>
+                      <span class="invoice-status-badge is-${status.key}">${escapeHtml(status.label)}</span>
+                    </div>
+                    <div class="account-invoice-financials">
+                      <div><span>الإجمالي</span><strong>${formatUsdAmount(net)}</strong></div>
+                      <div><span>المسدد</span><strong>${formatUsdAmount(invoicePaid)}</strong></div>
+                      <div><span>الباقي</span><strong>${formatUsdAmount(invoiceRemaining)}</strong></div>
+                    </div>
+                    ${record.payments.length ? `
+                      <div class="account-invoice-payments">
+                        ${[...record.payments].sort((a, b) =>
+                          (a.date || '').localeCompare(b.date || '')
+                          || (a.createdAt || '').localeCompare(b.createdAt || '')
+                        ).map((payment, paymentIndex) => `
+                          <span><b>${paymentIndex + 1}. ${money(payment.amount)} $</b> — ${escapeHtml(payment.date || 'بدون تاريخ')}${payment.note ? ` — ${escapeHtml(payment.note)}` : ''}</span>
+                        `).join('')}
+                      </div>
+                    ` : '<span class="account-invoice-no-payments">لا توجد دفعات على هذه الفاتورة</span>'}
+                  </article>
+                `
+              }).join('')}
+            </div>
+          ` : '<div class="account-statement-empty">لا توجد فواتير مرتبطة بهذا الزبون.</div>'}
+        </section>
+      </div>
 
       <div class="account-statement-actions">
         <button type="button" class="secondary-button" data-close-account>إغلاق</button>
-        <button type="button" class="primary-button" id="export-account-statement">تصدير كشف الحساب كصورة</button>
+        <button type="button" class="primary-button" id="export-account-statement">تصدير كشف الحساب</button>
       </div>
     </div>
   `)
@@ -906,7 +910,7 @@ function renderCustomerAccountExportConfirmation(accountBackdrop: HTMLDivElement
       <div class="account-statement-actions">
         <button type="button" class="secondary-button" data-close-account-export>رجوع</button>
         <button type="button" class="secondary-button" id="preview-account-export">معاينة</button>
-        <button type="button" class="primary-button" id="confirm-account-export">تأكيد وتصدير الصورة</button>
+        <button type="button" class="primary-button" id="confirm-account-export">تأكيد التصدير</button>
       </div>
     </div>
   `)
@@ -1117,7 +1121,7 @@ async function exportCustomerAccountStatementA4(
         context.textAlign = 'center'
         context.fillStyle = ink
         context.font = '800 12px Cairo, sans-serif'
-        context.fillText(`${money(payment.amount)} دولار`, cellX + (cellWidth - 24) / 2, cellY + 18)
+        context.fillText(formatUsdAmount(payment.amount), cellX + (cellWidth - 24) / 2, cellY + 18)
         context.fillStyle = muted
         context.font = '700 9px Cairo, sans-serif'
         context.fillText(payment.date || 'بدون تاريخ', cellX + (cellWidth - 24) / 2, cellY + 32)
@@ -1165,7 +1169,7 @@ async function exportCustomerAccountStatementA4(
       first.context.fillText(item.label, cardX + cardWidth / 2, 242)
       first.context.fillStyle = item.color
       first.context.font = '800 23px Cairo, sans-serif'
-      first.context.fillText(`${money(item.value)} دولار`, cardX + cardWidth / 2, 276)
+      first.context.fillText(formatUsdAmount(item.value), cardX + cardWidth / 2, 276)
     })
 
     first.context.textAlign = 'right'
@@ -1264,7 +1268,7 @@ async function exportCustomerAccountStatementA4(
         activeContext.fillText(item.label, cardX + cardWidth / 2, invoiceY + 110)
         activeContext.fillStyle = ink
         activeContext.font = '800 15px Cairo, sans-serif'
-        activeContext.fillText(`${money(item.value)} دولار`, cardX + cardWidth / 2, invoiceY + 130)
+        activeContext.fillText(formatUsdAmount(item.value), cardX + cardWidth / 2, invoiceY + 130)
       })
 
       if (sortedPayments.length) {
@@ -1441,7 +1445,7 @@ async function exportCustomerAccountStatement(
       context.fillText(item.label, cardX + cardWidth / 2, y + 42)
       context.fillStyle = item.color
       context.font = '800 30px Cairo, sans-serif'
-      context.fillText(`${money(item.value)} دولار`, cardX + cardWidth / 2, y + 88)
+      context.fillText(formatUsdAmount(item.value), cardX + cardWidth / 2, y + 88)
     })
 
     y = 390
@@ -1479,7 +1483,7 @@ async function exportCustomerAccountStatement(
       context.textAlign = 'right'
       context.fillStyle = ink
       context.font = compact ? '800 16px Cairo, sans-serif' : '800 13px Cairo, sans-serif'
-      context.fillText(`${money(payment.amount)} دولار`, itemX + itemWidth - 52, rowY + 19)
+      context.fillText(formatUsdAmount(payment.amount), itemX + itemWidth - 52, rowY + 19)
       context.fillStyle = muted
       context.font = compact ? '700 13px Cairo, sans-serif' : '700 11px Cairo, sans-serif'
       const details = `${payment.invoiceNumber ? `فاتورة ${payment.invoiceNumber}  |  ` : ''}${payment.date || 'بدون تاريخ'}${payment.note ? `  |  ${payment.note}` : ''}`
@@ -1604,7 +1608,7 @@ async function exportCustomerAccountStatement(
         context.fillText(item.label, cardRight - 112, y + 132)
         context.fillStyle = ink
         context.font = '800 18px Cairo, sans-serif'
-        context.fillText(`${money(item.value)} دولار`, cardRight - 112, y + 158)
+        context.fillText(formatUsdAmount(item.value), cardRight - 112, y + 158)
       })
 
       const paymentY = y + 196
@@ -1791,15 +1795,15 @@ function renderInvoicesSection() {
               <section class="invoice-summary-financials" aria-label="الملخص المالي">
                 <div class="invoice-metric">
                   <span class="invoice-metric-label">الإجمالي</span>
-                  <strong class="invoice-metric-value">${money(net)} <small>دولار</small></strong>
+                  <strong class="invoice-metric-value">${money(net)} <small>$</small></strong>
                 </div>
                 <div class="invoice-metric is-paid">
                   <span class="invoice-metric-label">المسدد</span>
-                  <strong class="invoice-metric-value">${money(paid)} <small>دولار</small></strong>
+                  <strong class="invoice-metric-value">${money(paid)} <small>$</small></strong>
                 </div>
                 <div class="invoice-metric is-remaining ${remaining <= 0.00001 ? 'is-clear' : 'is-due'}">
                   <span class="invoice-metric-label">الباقي</span>
-                  <strong class="invoice-metric-value">${money(remaining)} <small>دولار</small></strong>
+                  <strong class="invoice-metric-value">${money(remaining)} <small>$</small></strong>
                 </div>
               </section>
             </button>
@@ -1807,8 +1811,8 @@ function renderInvoicesSection() {
               <footer class="invoice-summary-meta">
                 <span class="invoice-meta-chip"><span>تاريخ البدء</span><strong>${escapeHtml(startDate)}</strong></span>
                 <span class="invoice-meta-chip"><span>آخر تحديث</span><strong>${escapeHtml(lastUpdate)}</strong></span>
-                ${hasDiscount ? `<span class="invoice-meta-chip"><span>قبل الخصم</span><strong>${money(latest.total)} دولار</strong></span><span class="invoice-meta-chip"><span>الخصم</span><strong>${money(latest.discount!.amount)} دولار</strong></span>` : ''}
-                <span class="invoice-meta-chip"><span>بعد الخصم</span><strong>${money(net)} دولار</strong></span>
+                ${hasDiscount ? `<span class="invoice-meta-chip"><span>قبل الخصم</span><strong>${formatUsdAmount(latest.total)}</strong></span><span class="invoice-meta-chip"><span>الخصم</span><strong>${formatUsdAmount(latest.discount!.amount)}</strong></span>` : ''}
+                      <span class="invoice-meta-chip"><span>بعد الخصم</span><strong>${formatUsdAmount(net)}</strong></span>
                 <span class="invoice-meta-chip"><span>عدد الدفعات</span><strong>${paymentsCount}</strong></span>
               </footer>
             </div>
@@ -2060,7 +2064,7 @@ function renderAddInvoicePaymentDialog(sourceRecord: InvoiceRecord) {
     <p class="eyebrow">إضافة دفعة</p>
     <h2>فاتورة رقم ${escapeHtml(fixedInvoiceNumber)}</h2>
     <form id="invoice-payment-form" class="service-form" novalidate>
-      <label>مبلغ الدفعة بالدولار<input name="amount" type="number" min="0.01" max="${remaining}" step="0.01" inputmode="decimal" required placeholder="0.00"><small>المبلغ المتبقي الحالي: ${money(remaining)} دولار</small></label>
+      <label>مبلغ الدفعة بال$<input name="amount" type="number" min="0.01" max="${remaining}" step="0.01" inputmode="decimal" required placeholder="0.00"><small>المبلغ المتبقي الحالي: ${money(remaining)} $</small></label>
       <label>تاريخ الدفعة<input name="date" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
       <label>ملاحظة<textarea name="note" maxlength="200" rows="2" placeholder="ملاحظة اختيارية"></textarea></label>
       <p class="modal-note">سيتم تسجيل الدفعة في سجل الفاتورة دون تصدير ملف. يمكنك تصدير الفاتورة لاحقًا من زر «تصدير».</p>
@@ -2095,7 +2099,7 @@ function renderAddInvoicePaymentDialog(sourceRecord: InvoiceRecord) {
       return
     }
     if (amount - remaining > 0.00001) {
-      error.textContent = `لا يمكن أن تتجاوز الدفعة المبلغ المتبقي (${money(remaining)} دولار).`
+      error.textContent = `لا يمكن أن تتجاوز الدفعة المبلغ المتبقي (${money(remaining)} $).`
       return
     }
     const paymentDate = dateInput.value || new Date().toISOString().slice(0, 10)
@@ -2143,7 +2147,7 @@ async function saveInvoicePaymentsSnapshot(sourceRecord: InvoiceRecord, payments
   const netTotal = getInvoiceNetTotal(sourceRecord)
   const paidTotal = payments.reduce((sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0), 0)
   if (paidTotal - netTotal > 0.00001) {
-    showToast(`لا يمكن أن يتجاوز مجموع الدفعات صافي الفاتورة (${money(netTotal)} دولار).`)
+    showToast(`لا يمكن أن يتجاوز مجموع الدفعات صافي الفاتورة (${money(netTotal)} $).`)
     return false
   }
   const normalizedPayments = payments.map((payment) => ({
@@ -2183,7 +2187,7 @@ function renderEditInvoicePaymentDialog(sourceRecord: InvoiceRecord, paymentInde
     <p class="eyebrow">تعديل دفعة</p>
     <h2>فاتورة رقم ${escapeHtml(fixedInvoiceNumber)}</h2>
     <form id="edit-invoice-payment-form" class="service-form" novalidate>
-      <label>مبلغ الدفعة بالدولار<input name="amount" type="number" min="0.01" max="${maxAmount}" step="0.01" inputmode="decimal" required value="${escapeHtml(String(payment.amount))}"><small>الحد الأقصى لهذه الدفعة الآن: ${money(maxAmount)} دولار</small></label>
+      <label>مبلغ الدفعة بال$<input name="amount" type="number" min="0.01" max="${maxAmount}" step="0.01" inputmode="decimal" required value="${escapeHtml(String(payment.amount))}"><small>الحد الأقصى لهذه الدفعة الآن: ${money(maxAmount)} $</small></label>
       <label>تاريخ الدفعة<input name="date" type="date" value="${escapeHtml(payment.date || '')}"></label>
       <label>ملاحظة<textarea name="note" maxlength="200" rows="2">${escapeHtml(payment.note || '')}</textarea></label>
       <p class="modal-error" id="edit-invoice-payment-error"></p>
@@ -2206,7 +2210,7 @@ function renderEditInvoicePaymentDialog(sourceRecord: InvoiceRecord, paymentInde
       return
     }
     if (amount - maxAmount > 0.00001) {
-      error.textContent = `لا يمكن أن تتجاوز هذه الدفعة ${money(maxAmount)} دولار حتى لا يتجاوز مجموع الدفعات صافي الفاتورة.`
+      error.textContent = `لا يمكن أن تتجاوز هذه الدفعة ${money(maxAmount)} $ حتى لا يتجاوز مجموع الدفعات صافي الفاتورة.`
       return
     }
     const date = (form.querySelector<HTMLInputElement>('input[name="date"]')!).value || ''
@@ -2233,7 +2237,7 @@ function renderDeleteInvoicePaymentDialog(sourceRecord: InvoiceRecord, paymentIn
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     <p class="eyebrow">حذف دفعة</p>
     <h2>تأكيد حذف الدفعة</h2>
-    <p>سيتم حذف الدفعة بمبلغ <strong>${money(payment.amount)} دولار</strong>${payment.date ? ` بتاريخ ${escapeHtml(payment.date)}` : ''} وتحديث المتبقي وحالة الفاتورة الأساسية.</p>
+    <p>سيتم حذف الدفعة بمبلغ <strong>${money(payment.amount)} $</strong>${payment.date ? ` بتاريخ ${escapeHtml(payment.date)}` : ''} وتحديث المتبقي وحالة الفاتورة الأساسية.</p>
     <p class="modal-error" id="delete-invoice-payment-error"></p>
     <div class="modal-actions">
       <button class="secondary-button" id="cancel-delete-invoice-payment" type="button">إلغاء</button>
@@ -2332,23 +2336,23 @@ function renderInvoiceVersionsDialog(rootId: string) {
           <div class="invoice-version-financials">
             <div class="invoice-financial-item">
               <span>الإجمالي</span>
-              <strong>${money(latest.total)} <small>دولار</small></strong>
+              <strong>${money(latest.total)} <small>$</small></strong>
             </div>
             ${latest.discount ? `<div class="invoice-financial-item">
               <span>الخصم</span>
-              <strong>${money(latest.discount.amount)} <small>دولار</small></strong>
+              <strong>${money(latest.discount.amount)} <small>$</small></strong>
             </div>` : ''}
             <div class="invoice-financial-item">
               <span>الصافي</span>
-              <strong>${money(net)} <small>دولار</small></strong>
+              <strong>${money(net)} <small>$</small></strong>
             </div>
             <div class="invoice-financial-item">
               <span>المدفوع</span>
-              <strong>${money(paymentsTotal)} <small>دولار</small></strong>
+              <strong>${money(paymentsTotal)} <small>$</small></strong>
             </div>
             <div class="invoice-financial-item is-remaining">
               <span>المتبقي</span>
-              <strong>${money(remaining)} <small>دولار</small></strong>
+              <strong>${money(remaining)} <small>$</small></strong>
             </div>
           </div>
         </article>
@@ -2361,7 +2365,7 @@ function renderInvoiceVersionsDialog(rootId: string) {
           ${paymentEntries.length ? `<div class="invoice-payment-records">${paymentEntries.map(({ payment, index }) => `
             <article class="invoice-payment-record">
               <div class="invoice-payment-record-main">
-                <strong>${money(payment.amount)} دولار</strong>
+                <strong>${money(payment.amount)} $</strong>
                 <span>${escapeHtml(payment.date || 'بدون تاريخ')}${payment.note ? ` — ${escapeHtml(payment.note)}` : ''}</span>
               </div>
               <div class="invoice-payment-record-actions">
@@ -2606,7 +2610,7 @@ function renderCurrencySettings(content: HTMLElement, element: HTMLElement) {
     <h2>العملة</h2>
     <label class="switch-row"><span>تفعيل الليرة السورية</span><input id="local-currency-enabled" type="checkbox" ${settings.syriaEnabled ? 'checked' : ''}><i></i></label>
     <div id="currency-fields" class="${settings.syriaEnabled ? '' : 'hidden'}">
-      <label>سعر الصرف<input id="exchange-rate" type="number" min="0.000001" step="0.000001" value="${settings.exchangeRate || ''}" placeholder="15000"><small>1 دولار = عدد الليرات</small></label>
+      <label>سعر الصرف<input id="exchange-rate" type="number" min="0.000001" step="0.000001" value="${settings.exchangeRate || ''}" placeholder="15000"><small>1 $ = عدد الليرات</small></label>
     </div>
     <p class="modal-error" id="currency-error"></p>
     <button class="primary-button" id="save-currency">حفظ إعدادات العملة</button>`
@@ -2782,7 +2786,7 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
 }
 
 function invoiceCurrencyLabel(currencyCode: string) {
-  return currencyCode === 'USD' ? 'دولار' : currencyCode
+  return currencyCode === 'USD' ? USD_CURRENCY_SYMBOL : currencyCode
 }
 
 function getFollowingInvoiceNumber(currentNumber: unknown) {
@@ -3091,7 +3095,7 @@ async function exportServicesToImage(
         const currencyText = service.currencyCode === 'USD' ? '$'
           : service.currencyCode === 'ليرة' ? 'ل.س'
           : service.currencyCode
-        context.fillText(`${money(exportPrice)} ${currencyText}`, 115, y + 27)
+        context.fillText(currencyText === '$' ? formatUsdAmount(exportPrice) : `${money(exportPrice)} ${currencyText}`, 115, y + 27)
       }
 
       const noteLines = exportNote && pageIndex === pageCount - 1
@@ -3406,7 +3410,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
                     ? invoiceQuantity(row.quantity)
                     : column.key === 'unitPrice'
                       ? money(row.unitPrice)
-                      : `${money(row.total)} دولار`
+                      : `${money(row.total)} $`
         context.fillStyle = '#203044'
         const isTextColumn = column.key === 'name' || column.key === 'notes'
         context.textAlign = isTextColumn ? 'right' : 'center'
@@ -3470,7 +3474,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
       context.strokeStyle = '#c6a253'
       context.strokeRect(tableLeft, quantityCellY, tableRight - tableLeft, quantityCellHeight)
       const quantitySummary = data.unitTotals.map(({ unit, quantity, amount }) =>
-        `${invoiceQuantity(quantity)} ${unit} = ${amount === null ? '—' : `${money(amount)} دولار`}`).join('  |  ')
+        `${invoiceQuantity(quantity)} ${unit} = ${amount === null ? '—' : `${money(amount)} $`}`).join('  |  ')
       let quantityFontSize = 11
       context.fillStyle = '#203044'
       context.textAlign = 'center'
@@ -3499,15 +3503,15 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
       const finalTotal = data.total - (discount?.amount || 0)
       const summaryCards: Array<{ label: string; value: string; fill: string; color: string }> = hasDiscount && discount
         ? [
-          { label: 'الإجمالي قبل الخصم', value: `${money(data.total)} دولار`, fill: '#e8f5f2', color: '#006e69' },
-          { label: discount.mode === 'percentage' ? `الخصم (${discount.value}%)` : 'قيمة الخصم', value: `${money(discount.amount)} دولار`, fill: '#fff0ed', color: '#c62828' },
-          { label: 'الإجمالي بعد الخصم', value: `${money(finalTotal)} دولار`, fill: '#e8f5f2', color: '#006e69' },
+          { label: 'الإجمالي قبل الخصم', value: `${money(data.total)} $`, fill: '#e8f5f2', color: '#006e69' },
+          { label: discount.mode === 'percentage' ? `الخصم (${discount.value}%)` : 'قيمة الخصم', value: `${money(discount.amount)} $`, fill: '#fff0ed', color: '#c62828' },
+          { label: 'الإجمالي بعد الخصم', value: `${money(finalTotal)} $`, fill: '#e8f5f2', color: '#006e69' },
         ]
         : []
       if (!hasDiscount) {
         summaryCards.push({
           label: 'الإجمالي النهائي',
-          value: `${money(finalTotal)} دولار`,
+          value: `${money(finalTotal)} $`,
           fill: '#e8f5f2',
           color: '#006e69',
         })
@@ -3567,7 +3571,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
             {
               left: tableLeft + paymentCellWidth * 2,
               label: 'الدفعة',
-              value: `${money(payment.amount)} دولار`,
+              value: `${money(payment.amount)} $`,
               sublabel: payment.date ? `تاريخ الدفعة: ${payment.date}` : '',
               fill: '#f3f9f8',
               settled: false,
@@ -3575,7 +3579,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
             {
               left: tableLeft + paymentCellWidth,
               label: 'إجمالي الدفعات',
-              value: `${money(paidTotal)} دولار`,
+              value: `${money(paidTotal)} $`,
               sublabel: '',
               fill: '#e8f5f2',
               settled: false,
@@ -3583,7 +3587,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
             {
               left: tableLeft,
               label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
-              value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
+              value: isFullyPaid ? '' : `${money(remainingAmount)} $`,
               sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
               fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
               labelColor: isFullyPaid ? '#166534' : '#c2410c',
@@ -3616,7 +3620,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
           const paymentCards = [
             ...exportPayments.map((payment, index) => ({
               label: exportPayments.length > 1 ? `الدفعة ${index + 1}` : 'الدفعة',
-              value: `${money(payment.amount)} دولار`,
+              value: `${money(payment.amount)} $`,
               sublabel: [payment.date ? `التاريخ: ${payment.date}` : '', payment.note || ''].filter(Boolean).join(' — '),
               fill: '#f3f9f8',
               valueColor: '#203044',
@@ -3625,7 +3629,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
             })),
             {
               label: 'إجمالي الدفعات',
-              value: `${money(paidTotal)} دولار`,
+              value: `${money(paidTotal)} $`,
               sublabel: '',
               fill: '#e8f5f2',
               valueColor: '#203044',
@@ -3634,7 +3638,7 @@ async function renderInvoiceCanvases(data: InvoiceExportData, imageScale: ImageE
             },
             {
               label: isFullyPaid ? 'مسددة بالكامل' : 'الباقي',
-              value: isFullyPaid ? '' : `${money(remainingAmount)} دولار`,
+              value: isFullyPaid ? '' : `${money(remainingAmount)} $`,
               sublabel: isFullyPaid ? `بتاريخ ${lastPayment?.date || 'بدون تاريخ'}` : '',
               fill: isFullyPaid ? '#ecfdf3' : '#fff4e5',
               valueColor: isFullyPaid ? '#166534' : '#c2410c',
@@ -3886,8 +3890,8 @@ type CorrectionEntry = { version: InvoiceRecord; when: string; summary: string; 
 function describeDiscount(discount: StoredInvoiceDiscount): string {
   if (!discount || !Number.isFinite(discount.amount) || discount.amount <= 0) return 'بدون خصم'
   return discount.mode === 'percentage'
-    ? `${money(discount.amount)} دولار (${money(discount.value)}%)`
-    : `${money(discount.amount)} دولار (مبلغ ثابت)`
+    ? `${money(discount.amount)} $ (${money(discount.value)}%)`
+    : `${money(discount.amount)} $ (مبلغ ثابت)`
 }
 
 function correctionItemName(item: { name?: string }, index: number): string {
@@ -3897,7 +3901,7 @@ function correctionItemName(item: { name?: string }, index: number): string {
 
 function describePayment(payment: InvoicePayment | undefined): string {
   if (!payment) return '—'
-  const amount = Number.isFinite(payment.amount) ? `${money(payment.amount)} دولار` : '—'
+  const amount = Number.isFinite(payment.amount) ? `${money(payment.amount)} $` : '—'
   const date = (payment.date || '').trim() || 'بدون تاريخ'
   const note = (payment.note || '').trim()
   return `${amount} — ${date}${note ? ` (${note})` : ''}`
@@ -3951,7 +3955,7 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
     if ((prev.name || '').trim() !== (curr.name || '').trim()) itemChanges.push(`الاسم: ${(prev.name || '').trim() || '—'} ← ${(curr.name || '').trim() || '—'}`)
     if ((prev.unit || '').trim() !== (curr.unit || '').trim()) itemChanges.push(`الوحدة: ${(prev.unit || '').trim() || '—'} ← ${(curr.unit || '').trim() || '—'}`)
     if ((prev.quantity || '').trim() !== (curr.quantity || '').trim()) itemChanges.push(`الكمية: ${(prev.quantity || '').trim() || '—'} ← ${(curr.quantity || '').trim() || '—'}`)
-    if ((prev.price || '').trim() !== (curr.price || '').trim()) itemChanges.push(`السعر: ${(prev.price || '').trim() || '—'} ← ${(curr.price || '').trim() || '—'} دولار`)
+    if ((prev.price || '').trim() !== (curr.price || '').trim()) itemChanges.push(`السعر: ${(prev.price || '').trim() || '—'} ← ${(curr.price || '').trim() || '—'} $`)
     if ((prev.notes || '').trim() !== (curr.notes || '').trim()) itemChanges.push(`الملاحظات: ${(prev.notes || '').trim() || '—'} ← ${(curr.notes || '').trim() || '—'}`)
     if (itemChanges.length) {
       changes.push({ label: name, text: itemChanges.join(' • ') })
@@ -3961,7 +3965,7 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
   for (const [id, { item: curr, index }] of currItemsById) {
     if (prevItemsById.has(id)) continue
     const qty = curr.quantity?.trim() ? curr.quantity.trim() : '—'
-    const price = curr.price?.trim() ? `${money(Number(curr.price))} دولار` : '—'
+    const price = curr.price?.trim() ? `${money(Number(curr.price))} $` : '—'
     changes.push({
       label: 'إضافة خدمة',
       text: `${(curr.name || '').trim() || `خدمة #${index + 1}`} (${qty} ${curr.unit || ''} × ${price})`.trim(),
@@ -3997,13 +4001,13 @@ function describeInvoiceCorrection(previous: InvoiceRecord, current: InvoiceReco
   const prevNet = getInvoiceNetTotal(previous)
   const currNet = getInvoiceNetTotal(current)
   if (Math.abs(prevNet - currNet) > 0.00001) {
-    changes.push({ label: 'صافي الفاتورة', before: `${money(prevNet)} دولار`, after: `${money(currNet)} دولار` })
+    changes.push({ label: 'صافي الفاتورة', before: `${money(prevNet)} $`, after: `${money(currNet)} $` })
     tags.add('مبالغ')
   }
   const prevRemaining = getInvoiceRemainingTotal(previous)
   const currRemaining = getInvoiceRemainingTotal(current)
   if (Math.abs(prevRemaining - currRemaining) > 0.00001) {
-    changes.push({ label: 'المتبقي', before: `${money(prevRemaining)} دولار`, after: `${money(currRemaining)} دولار` })
+    changes.push({ label: 'المتبقي', before: `${money(prevRemaining)} $`, after: `${money(currRemaining)} $` })
     tags.add('دفعات')
   }
 
@@ -4173,7 +4177,7 @@ function openInvoiceCustomerExportDialog(
   const isExportSave = mode === 'export-save'
   const allowDataEdit = !isExportOnly
   const showFormat = isExportOnly
-  const formatAmount = (value: number) => `${money(value)} دولار`
+  const formatAmount = (value: number) => formatUsdAmount(value)
   const fixedInvoiceNumber = context?.sourceRecord
     ? (context.sourceRecord.rootInvoiceNumber || context.sourceRecord.invoiceNumber)
     : null
@@ -4238,7 +4242,7 @@ function openInvoiceCustomerExportDialog(
           <legend>تفعيل الخصم</legend>
           <div class="invoice-discount-option">
             <button type="button" data-invoice-discount-mode="amount" aria-pressed="false">خصم مبلغ</button>
-            <label class="invoice-discount-value"><input id="invoice-discount-amount" type="number" min="0.01" max="${data.total}" step="0.01" inputmode="decimal" aria-label="قيمة الخصم بالدولار" disabled><span>$</span></label>
+            <label class="invoice-discount-value"><input id="invoice-discount-amount" type="number" min="0.01" max="${data.total}" step="0.01" inputmode="decimal" aria-label="قيمة الخصم بال$" disabled><span>$</span></label>
           </div>
           <div class="invoice-discount-option">
             <button type="button" data-invoice-discount-mode="percentage" aria-pressed="false">خصم مئوي</button>
@@ -4396,7 +4400,7 @@ function openInvoiceCustomerExportDialog(
       const paidTotal = carriedPayments.reduce((sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0), 0)
       if (paidTotal - netTotal > 0.00001) {
         if (notifyInvalid) {
-          showToast(`إجمالي الدفعات المسجلة (${money(paidTotal)} دولار) أكبر من صافي الفاتورة (${money(netTotal)} دولار). عدّل الخصم/الإجمالي بما يتوافق مع الدفعات.`)
+          showToast(`إجمالي الدفعات المسجلة (${money(paidTotal)} $) أكبر من صافي الفاتورة (${money(netTotal)} $). عدّل الخصم/الإجمالي بما يتوافق مع الدفعات.`)
         }
         return false
       }
@@ -5051,7 +5055,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
                   <span class="invoice-price-heading">سعر الوحدة</span>
                   <span class="invoice-price-row">
                     <input class="invoice-price-input" type="number" min="0" step="any" inputmode="decimal" data-invoice-price="${id}" value="${escapeHtml(price)}" placeholder="السعر" aria-label="سعر الوحدة">
-                    <span class="invoice-currency-cell">${escapeHtml(invoiceCurrencyName(currencyCode))}</span>
+                    <span class="invoice-currency-cell">دولار</span>
                   </span>
                 </label>
               </div>
@@ -5091,7 +5095,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
                     <strong>${escapeHtml(service.name)}</strong>
                     <small>${escapeHtml(serviceUnitLabel(service.unit))}</small>
                   </span>
-                  <strong class="invoice-option-price">${usdPrice === null ? 'يلزم سعر الصرف' : `${money(usdPrice)} دولار`}</strong>
+                  <strong class="invoice-option-price">${usdPrice === null ? 'يلزم سعر الصرف' : `${money(usdPrice)} $`}</strong>
                 </button>`
               }).join('')}
             </div>
@@ -5187,7 +5191,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     if (netElement) {
       netElement.innerHTML = totals.size
         ? [...totals].map(([, total]) =>
-          `<span>${money(total)} دولار</span>${settings.syriaEnabled && settings.exchangeRate > 0
+          `<span>${money(total)} $</span>${settings.syriaEnabled && settings.exchangeRate > 0
             ? `<small>${money(total * settings.exchangeRate)} ليرة سورية</small>`
             : ''}`).join('')
         : '—'
@@ -5204,7 +5208,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
             : null,
         })))
       unitTotals.innerHTML = displayedQuantities.map(({ unit, quantity, amount }) =>
-        `<li>${invoiceQuantity(quantity)} ${escapeHtml(unit)} = ${amount === null ? 'قيمة غير مكتملة' : `${money(amount)} دولار`}</li>`).join('')
+        `<li>${invoiceQuantity(quantity)} ${escapeHtml(unit)} = ${amount === null ? 'قيمة غير مكتملة' : `${money(amount)} $`}</li>`).join('')
       fitInvoiceSummaryText(unitTotals, 12, 4)
     }
   }
@@ -5306,17 +5310,17 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           <div class="export-service-meta">
             <span>${escapeHtml(serviceUnitLabel(service.unit))}</span>
             <span class="export-meta-separator" aria-hidden="true">|</span>
-            <span>السعر الأساسي: ${money(service.price)} ${service.currencyCode === 'USD' ? 'دولار' : escapeHtml(service.currencyCode)}</span>
+            <span>السعر الأساسي: ${money(service.price)} ${service.currencyCode === 'USD' ? '$' : escapeHtml(service.currencyCode)}</span>
           </div>
           <div class="export-price-field">
-            <span>سعر التصدير بالدولار</span>
+            <span>سعر التصدير</span>
             <span class="export-price-stepper">
-              <button type="button" class="export-price-adjust export-price-increase" data-export-adjust="increase" data-service-id="${service.id}" aria-label="زيادة السعر ربع دولار" ${checked ? '' : 'disabled'}>▲</button>
+              <button type="button" class="export-price-adjust export-price-increase" data-export-adjust="increase" data-service-id="${service.id}" aria-label="زيادة السعر ربع $" ${checked ? '' : 'disabled'}>▲</button>
               <span class="export-price-input-wrap">
                 <span class="export-price-dollar" aria-hidden="true">$</span>
                 <input type="number" min="0" step="0.25" data-export-price="${service.id}" value="${exportPrice}" ${checked ? '' : 'disabled'}>
               </span>
-              <button type="button" class="export-price-adjust export-price-decrease" data-export-adjust="decrease" data-service-id="${service.id}" aria-label="إنقاص السعر ربع دولار" ${checked ? '' : 'disabled'}>▼</button>
+              <button type="button" class="export-price-adjust export-price-decrease" data-export-adjust="decrease" data-service-id="${service.id}" aria-label="إنقاص السعر ربع $" ${checked ? '' : 'disabled'}>▼</button>
             </span>
             ${liraExportPrice !== null ? `<span class="export-syrian-price">${money(liraExportPrice)} ليرة</span>` : ''}
           </div>
@@ -5478,7 +5482,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
           const paidTotal = getInvoicePaidTotal(sourceRecord)
           const correctionNet = data.total - (sourceRecord.discount?.amount || 0)
           if (options?.correction && paidTotal - correctionNet > 0.00001) {
-            showToast(`لا يمكن حفظ التصحيح لأن إجمالي الدفعات المسجلة (${money(paidTotal)} دولار) أكبر من صافي الفاتورة بعد التعديل (${money(Math.max(0, correctionNet))} دولار). عدّل البنود/الأسعار أو قلّل الدفعات أولًا.`)
+            showToast(`لا يمكن حفظ التصحيح لأن إجمالي الدفعات المسجلة (${money(paidTotal)} $) أكبر من صافي الفاتورة بعد التعديل (${money(Math.max(0, correctionNet))} $). عدّل البنود/الأسعار أو قلّل الدفعات أولًا.`)
             exportDialogOpening = false
             if (exportButton.isConnected) exportButton.disabled = false
             return
@@ -5563,7 +5567,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       if (!service) return
       const usdPrice = invoicePriceInUsd(service)
       if (usdPrice === null) {
-        showToast('أدخل سعر الصرف لتحويل سعر الخدمة إلى الدولار.')
+        showToast('أدخل سعر الصرف لتحويل سعر الخدمة إلى ال$.')
         return
       }
       const itemId = nextInvoiceItemId++
