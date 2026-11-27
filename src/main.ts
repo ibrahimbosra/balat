@@ -2980,11 +2980,11 @@ function renderSettings() {
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     <p class="eyebrow">إعدادات التطبيق</p>
     <div class="settings-tabs" role="tablist" aria-label="إعدادات التطبيق">
+      <button role="tab" aria-selected="false" data-settings-tab="account">الحساب</button>
+      <button role="tab" aria-selected="false" data-settings-tab="preferences">التفضيلات</button>
       <button class="active" role="tab" aria-selected="true" data-settings-tab="currency">العملة</button>
       <button role="tab" aria-selected="false" data-settings-tab="system">النظام</button>
       <button role="tab" aria-selected="false" data-settings-tab="backup">نسخ احتياطي</button>
-      <button role="tab" aria-selected="false" data-settings-tab="preferences">التفضيلات</button>
-      <button role="tab" aria-selected="false" data-settings-tab="account">الحساب</button>
     </div>
     <div id="settings-content"></div>`)
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
