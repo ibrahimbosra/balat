@@ -626,7 +626,7 @@ function friendlyError(error: unknown) {
 }
 
 function renderBootstrap(message = 'جارٍ استعادة جلستك...') {
-  appRoot.innerHTML = `<main class="bootstrap"><div class="brand-mark">أسطح</div><p>${message}</p></main>`
+  appRoot.innerHTML = `<main class="bootstrap"><div class="brand-mark">أعمال</div><p>${message}</p></main>`
 }
 
 function attachPasswordToggle(button: HTMLButtonElement) {
@@ -656,10 +656,10 @@ function renderAuth(
   appRoot.innerHTML = `
     <main class="auth-page">
       <div class="brand-header">
-        <div class="brand-mark">أسطح</div>
+        <div class="brand-mark">أعمال</div>
         <div class="brand-copy">
-          <p class="eyebrow">إدارة أجور أعمال الأسطح والتشطيبات</p>
-          <p class="auth-copy">خدمات البلاط والسيراميك والرخام في مكان واحد.</p>
+          <p class="eyebrow">إدارة أعمالك باحتراف</p>
+          <p class="auth-copy">نظّم خدماتك وعملاءك وفواتيرك ومدفوعاتك في مكان واحد.</p>
         </div>
       </div>
       <div class="auth-header"><h2>${signUp ? 'إنشاء حساب جديد' : 'تسجيل الدخول إلى حسابك'}</h2></div>
@@ -2820,7 +2820,7 @@ function renderServiceEditor(existing?: WorkService) {
     <p class="eyebrow">${existing ? 'تعديل الخدمة' : 'خدمة جديدة'}</p>
     <h2>${existing ? escapeHtml(existing.name) : 'إضافة خدمة'}</h2>
     <form id="service-form" class="service-form">
-      <label>اسم الخدمة<input name="name" maxlength="50" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="مثال: تركيب السيراميك"></label>
+      <label>اسم الخدمة<input name="name" maxlength="50" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="مثال: خدمة مهنية"></label>
       <label>السعر<input name="price" type="number" min="0" step="0.01" inputmode="decimal" required value="${existing ? existing.price : ''}" placeholder="0.00"></label>
       <div class="custom-select-field" data-custom-select="unit" data-selected="${escapeHtml(initialUnit)}">
         <span class="custom-select-label-title">وحدة القياس</span>
@@ -3589,7 +3589,7 @@ function renderBackupSettings(content: HTMLElement) {
       const url = URL.createObjectURL(archive)
       const link = document.createElement('a')
       link.href = url
-      link.download = `نسخة-احتياطية-أسطح-${new Date().toISOString().slice(0, 10)}.zip`
+      link.download = `نسخة-احتياطية-أعمال-${new Date().toISOString().slice(0, 10)}.zip`
       document.body.append(link)
       link.click()
       link.remove()
