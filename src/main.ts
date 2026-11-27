@@ -101,6 +101,7 @@ type Customer = {
   address: string
   neighborhood: string
   notes: string
+  archived: boolean
   createdAt: string
   updatedAt: string
 }
@@ -197,6 +198,8 @@ let activeMainSection: MainSection = 'services'
 let workServices: WorkService[] = []
 let customers: Customer[] = []
 let invoiceRecords: InvoiceRecord[] = []
+let customerListView: 'active' | 'archived' = 'active'
+let invoicesLoaded = false
 let unsubscribeServices: () => void = () => undefined
 let unsubscribeCustomers: () => void = () => undefined
 let unsubscribeInvoices: () => void = () => undefined
@@ -360,6 +363,7 @@ function parseCustomer(id: string, data: Record<string, unknown>): Customer | nu
     address: typeof data.address === 'string' ? data.address.trim() : '',
     neighborhood: typeof data.neighborhood === 'string' ? data.neighborhood.trim() : '',
     notes: typeof data.notes === 'string' ? data.notes.trim() : '',
+    archived: data.archived === true,
     createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
     updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
   }
@@ -437,6 +441,11 @@ function findCustomerIdentityMatch(
 }
 
 function customerIdentityMessage(match: CustomerIdentityMatch, context: 'invoice' | 'customer') {
+  if ('customer' in match && match.customer.archived) {
+    return context === 'invoice'
+      ? `الزبون ${match.customer.name} مؤرشف. استعده من تبويب الأرشيف قبل ربط فاتورة جديدة به.`
+      : `الزبون ${match.customer.name} مؤرشف. استعده من تبويب الأرشيف قبل تعديل بياناته أو استخدامه.`
+  }
   if (match.kind === 'exact') {
     return context === 'invoice'
       ? 'تطابق رقم الهاتف أو بيانات الزبون مع سجل موجود. لا يمكن حفظ الفاتورة بهذه البيانات؛ اختر الزبون المسجل من السهم داخل خانة الاسم.'
@@ -840,11 +849,19 @@ function renderCustomersSection() {
   if (!content) return
   const invoiceSummaries = getCustomerInvoiceSummaries()
   const search = getMainSearchQuery()
-  const visible = customers
+  const activeCount = customers.filter((customer) => !customer.archived).length
+  const archivedCount = customers.filter((customer) => customer.archived).length
+  const matchingView = customers.filter((customer) => customer.archived === (customerListView === 'archived'))
+  const visible = matchingView
     .filter((customer) => [customer.name, customer.phone, customer.address, customer.neighborhood, customer.notes].join(' ').toLocaleLowerCase('ar').includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
   if (count) count.textContent = String(visible.length)
-  content.innerHTML = visible.length ? `
+  content.innerHTML = `
+    <div class="customer-view-switcher" role="tablist" aria-label="قائمة الزبائن">
+      <button type="button" role="tab" data-customer-view="active" aria-selected="${customerListView === 'active'}" class="${customerListView === 'active' ? 'active' : ''}">النشطون <span>${activeCount}</span></button>
+      <button type="button" role="tab" data-customer-view="archived" aria-selected="${customerListView === 'archived'}" class="${customerListView === 'archived' ? 'active' : ''}">الأرشيف <span>${archivedCount}</span></button>
+    </div>
+    ${visible.length ? `
     <section class="service-list customers-list">
       ${visible.map((customer, index) => {
         const summary = invoiceSummaries.get(customer.id) || { total: 0, paid: 0, remaining: 0 }
@@ -862,7 +879,10 @@ function renderCustomersSection() {
             <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
             <button class="service-main customer-main" type="button" data-edit-customer="${customer.id}">
               <span class="customer-identity-line">
-                <span class="service-name customer-identity-name">${escapeHtml(customer.name)}</span>
+                <span class="customer-title-line">
+                  <span class="service-name customer-identity-name">${escapeHtml(customer.name)}</span>
+                  ${customer.archived ? '<span class="customer-archived-badge">مؤرشف</span>' : ''}
+                </span>
                 <span class="customer-address-line">
                   <span class="customer-address">${customer.address ? escapeHtml(customer.address) : 'بدون عنوان'}</span>
                   ${customer.neighborhood ? `<span class="customer-identity-separator" aria-hidden="true">|</span><span class="customer-neighborhood">${escapeHtml(customer.neighborhood)}</span>` : ''}
@@ -889,7 +909,13 @@ function renderCustomersSection() {
         `
       }).join('')}
     </section>
-  ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${customers.length ? 'لا توجد نتائج' : 'ابدأ بإضافة أول زبون'}</h2><p>${customers.length ? 'جرّب كلمة بحث مختلفة.' : 'أضف اسم الزبون ورقم الهاتف والعنوان والملاحظات.'}</p></div>`
+    ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${matchingView.length ? 'لا توجد نتائج' : customerListView === 'archived' ? 'لا يوجد زبائن في الأرشيف' : customers.length ? 'لا يوجد زبائن نشطون' : 'ابدأ بإضافة أول زبون'}</h2><p>${matchingView.length ? 'جرّب كلمة بحث مختلفة.' : customerListView === 'archived' ? 'ستظهر هنا الزبائن الذين أرشفتهم، ويمكنك استعادتها في أي وقت.' : customers.length ? 'يمكنك استعادة زبون من الأرشيف أو إضافة زبون جديد.' : 'أضف اسم الزبون ورقم الهاتف والعنوان والملاحظات.'}</p></div>`}`
+  content.querySelectorAll<HTMLButtonElement>('[data-customer-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      customerListView = button.dataset.customerView === 'archived' ? 'archived' : 'active'
+      renderCustomersSection()
+    })
+  })
   content.querySelectorAll<HTMLButtonElement>('[data-edit-customer]').forEach((button) => {
     button.addEventListener('click', () => {
       const customer = customers.find((item) => item.id === button.dataset.editCustomer)
@@ -917,6 +943,21 @@ function getCustomerInvoiceRecords(customer: Customer): InvoiceRecord[] {
       return linked || (nameMatches && (!customer.phone || phoneMatches))
     })
     .sort((a, b) => Number(b.rootInvoiceNumber || b.invoiceNumber) - Number(a.rootInvoiceNumber || a.invoiceNumber))
+}
+
+function updateCustomerDeleteAvailability() {
+  const button = document.querySelector<HTMLButtonElement>('#delete-customer')
+  if (!button || button.classList.contains('cancel-delete-confirm')) return
+  const customer = customers.find((item) => item.id === button.dataset.customerId)
+  if (!customer) return
+  const hasInvoices = !invoicesLoaded || getCustomerInvoiceRecords(customer).length > 0
+  button.disabled = hasInvoices
+  button.textContent = !invoicesLoaded ? 'جارٍ التحقق من الفواتير' : hasInvoices ? 'لا يمكن الحذف لوجود فواتير' : 'حذف نهائي'
+  button.title = !invoicesLoaded
+    ? 'انتظر حتى يكتمل تحميل سجل الفواتير.'
+    : hasInvoices
+      ? 'أرشف الزبون بدلًا من حذفه للحفاظ على سجل فواتيره.'
+      : 'حذف نهائي لزبون لا يملك فواتير.'
 }
 
 function renderCustomerAccountStatement(customer: Customer) {
@@ -2154,6 +2195,7 @@ function renderProductsShell() {
 
 function renderCustomerEditor(existing?: Customer) {
   if (!currentUser) return
+  const initiallyLinkedInvoices = existing ? getCustomerInvoiceRecords(existing).length > 0 : false
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     <p class="eyebrow">${existing ? 'تعديل الزبون' : 'زبون جديد'}</p>
@@ -2166,8 +2208,11 @@ function renderCustomerEditor(existing?: Customer) {
       <label class="customer-notes-field">ملاحظات<textarea name="notes" maxlength="400" rows="3" placeholder="ملاحظات">${existing ? escapeHtml(existing.notes) : ''}</textarea></label>
       <p class="modal-error" id="customer-error" role="alert" aria-live="polite"></p>
       <div class="modal-actions">
-        ${existing ? '<button class="danger-button" id="delete-customer" type="button">حذف الزبون</button>' : '<button class="secondary-button" id="cancel-customer" type="button">إلغاء</button>'}
-        <button class="primary-button" type="submit">${existing ? 'حفظ التعديل' : 'حفظ الزبون'}</button>
+        ${existing
+          ? `<button class="danger-button" id="delete-customer" data-customer-id="${escapeHtml(existing.id)}" type="button" ${!invoicesLoaded || initiallyLinkedInvoices ? 'disabled' : ''}>${!invoicesLoaded ? 'جارٍ التحقق من الفواتير' : initiallyLinkedInvoices ? 'لا يمكن الحذف لوجود فواتير' : 'حذف نهائي'}</button>
+            <button class="primary-button" id="save-customer" type="submit">حفظ التعديل</button>
+            <button class="secondary-button" type="submit" data-customer-action="${existing.archived ? 'restore' : 'archive'}">${existing.archived ? 'استعادة الزبون' : 'أرشفة الزبون'}</button>`
+          : '<button class="secondary-button" id="cancel-customer" type="button">إلغاء</button><button class="primary-button" id="save-customer" type="submit">حفظ الزبون</button>'}
       </div>
     </form>`)
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
@@ -2178,7 +2223,8 @@ function renderCustomerEditor(existing?: Customer) {
   const phoneInput = form.querySelector<HTMLInputElement>('input[name="phone"]')!
   const addressInput = form.querySelector<HTMLInputElement>('input[name="address"]')!
   const neighborhoodInput = form.querySelector<HTMLInputElement>('input[name="neighborhood"]')!
-  const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"]')!
+  const submitButton = form.querySelector<HTMLButtonElement>('#save-customer')!
+  const archiveButton = form.querySelector<HTMLButtonElement>('[data-customer-action]')
   let deleteConfirmationActive = false
   let savingCustomer = false
   const updateNeighborhoodAvailability = (clearWhenDisabled = false) => {
@@ -2206,7 +2252,21 @@ function renderCustomerEditor(existing?: Customer) {
   updateCustomerIdentityWarning()
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
+    const submitter = (event as SubmitEvent).submitter
+    const customerAction = submitter instanceof HTMLButtonElement
+      ? submitter.dataset.customerAction
+      : undefined
     if (existing && deleteConfirmationActive) {
+      if (customerAction) return
+      if (!invoicesLoaded || getCustomerInvoiceRecords(existing).length > 0) {
+        deleteConfirmationActive = false
+        submitButton.textContent = 'حفظ التعديل'
+        submitButton.className = 'primary-button'
+        if (archiveButton) archiveButton.disabled = false
+        updateCustomerDeleteAvailability()
+        error.textContent = 'لا يمكن حذف هذا الزبون لوجود فواتير مرتبطة به. يمكنك أرشفته بدلًا من ذلك.'
+        return
+      }
       submitButton.disabled = true
       try {
         await deleteDoc(doc(db, 'users', dataUserId, 'customers', existing.id))
@@ -2246,26 +2306,55 @@ function renderCustomerEditor(existing?: Customer) {
       address,
       neighborhood,
       notes,
+      archived: customerAction === 'archive'
+        ? true
+        : customerAction === 'restore'
+          ? false
+          : existing?.archived === true,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     }
     savingCustomer = true
     submitButton.disabled = true
+    if (archiveButton) archiveButton.disabled = true
+    const previousCustomerListView = customerListView
+    if (existing && customerAction) {
+      customers = customers.map((customer) => customer.id === existing.id
+        ? { ...customer, ...documentData }
+        : customer)
+      if (customerAction === 'restore') customerListView = 'active'
+      renderCustomersSection()
+    }
     try {
       if (existing) await updateDoc(doc(db, 'users', dataUserId, 'customers', existing.id), documentData)
       else await addDoc(collection(db, 'users', dataUserId, 'customers'), documentData)
       element.remove()
+      if (customerAction) renderCustomersSection()
+      if (customerAction === 'archive') showToast('تمت أرشفة الزبون مع الاحتفاظ بسجل فواتيره.')
+      if (customerAction === 'restore') showToast('تمت استعادة الزبون إلى القائمة النشطة.')
     } catch (saveError) {
       savingCustomer = false
+      if (existing && customerAction) {
+        customers = customers.map((customer) => customer.id === existing.id ? existing : customer)
+        customerListView = previousCustomerListView
+        renderCustomersSection()
+      }
       updateCustomerIdentityWarning()
+      if (archiveButton) archiveButton.disabled = false
       if (!error.textContent) error.textContent = friendlyError(saveError)
     }
   })
   element.querySelector('#delete-customer')?.addEventListener('click', () => {
     if (!existing) return
     const deleteButton = element.querySelector<HTMLButtonElement>('#delete-customer')!
+    if (!invoicesLoaded || getCustomerInvoiceRecords(existing).length > 0) {
+      updateCustomerDeleteAvailability()
+      error.textContent = 'لا يمكن حذف هذا الزبون لوجود فواتير مرتبطة به. يمكنك أرشفته بدلًا من ذلك.'
+      return
+    }
     deleteConfirmationActive = !deleteConfirmationActive
     if (deleteConfirmationActive) {
+      if (archiveButton) archiveButton.disabled = true
       deleteButton.textContent = 'إلغاء'
       deleteButton.className = 'secondary-button cancel-delete-confirm'
       submitButton.textContent = 'تأكيد الحذف'
@@ -2277,7 +2366,9 @@ function renderCustomerEditor(existing?: Customer) {
     deleteButton.className = 'danger-button'
     submitButton.textContent = 'حفظ التعديل'
     submitButton.className = 'primary-button'
+    if (archiveButton) archiveButton.disabled = false
     element.querySelector('#customer-error')!.textContent = ''
+    updateCustomerDeleteAvailability()
     updateCustomerIdentityWarning()
   })
 }
@@ -5117,6 +5208,9 @@ async function saveExportedInvoiceRecord(
   const currentLinkedCustomer = data.customerId
     ? customers.find((customer) => customer.id === data.customerId)
     : undefined
+  if (currentLinkedCustomer?.archived && !sourceRecord) {
+    throw new CustomerIdentityError(`الزبون ${currentLinkedCustomer.name} مؤرشف. استعده من تبويب الأرشيف قبل ربط فاتورة جديدة به.`)
+  }
   const identityMatch = findCustomerIdentityMatch(
     enteredCustomerName,
     data.customerPhone,
@@ -5140,6 +5234,7 @@ async function saveExportedInvoiceRecord(
     address: data.customerAddress.trim(),
     neighborhood: data.customerNeighborhood.trim(),
     notes: '',
+    archived: false,
     createdAt: now,
     updatedAt: now,
   } : null
@@ -5562,7 +5657,8 @@ function openInvoiceCustomerExportDialog(
     const closeButton = pickerBackdrop.querySelector<HTMLButtonElement>('.invoice-customer-picker-close')!
     const renderCustomers = () => {
       const search = searchInput.value.trim().toLocaleLowerCase('ar')
-      const visibleCustomers = [...customers]
+      const activeCustomers = customers.filter((customer) => !customer.archived)
+      const visibleCustomers = [...activeCustomers]
         .filter((customer) => [customer.name, customer.phone, customer.address, customer.neighborhood]
           .join(' ')
           .toLocaleLowerCase('ar')
@@ -5580,9 +5676,9 @@ function openInvoiceCustomerExportDialog(
           </span>
           <span class="invoice-customer-picker-option-arrow" aria-hidden="true">‹</span>
         </button>`).join('')
-      emptyState.textContent = customers.length
+      emptyState.textContent = activeCustomers.length
         ? 'لا توجد نتائج مطابقة لبحثك.'
-        : 'لا يوجد زبائن مسجلون بعد. يمكنك إدخال الاسم يدويًا.'
+        : 'لا يوجد زبائن نشطون. استعد الزبون المؤرشف من الأرشيف أو أدخل اسم زبون جديد.'
       emptyState.hidden = visibleCustomers.length > 0
     }
     const closePicker = (restoreFocus = true) => {
@@ -6780,6 +6876,8 @@ async function startAuth() {
     workServices = []
     customers = []
     invoiceRecords = []
+    customerListView = 'active'
+    invoicesLoaded = false
     activeMainSection = 'services'
     if (!user) {
       document.querySelectorAll<HTMLElement>('.modal-backdrop').forEach((backdrop) => backdrop.remove())
@@ -6811,6 +6909,7 @@ async function startAuth() {
         .map((item) => parseCustomer(item.id, item.data()))
         .filter((item): item is Customer => item !== null)
         .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+      updateCustomerDeleteAvailability()
       if (activeMainSection === 'customers') renderCustomersSection()
     }, (error) => {
       console.error('Failed to load customers:', error)
@@ -6821,6 +6920,9 @@ async function startAuth() {
       invoiceRecords = snapshot.docs
         .map((item) => parseInvoiceRecord(item.id, item.data()))
         .filter((item): item is InvoiceRecord => item !== null)
+      invoicesLoaded = true
+      updateCustomerDeleteAvailability()
+      if (activeMainSection === 'customers') renderCustomersSection()
       if (activeMainSection === 'invoices') renderInvoicesSection()
     }, (error) => {
       console.error('Failed to load invoices:', error)
