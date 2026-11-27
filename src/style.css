@@ -56,7 +56,6 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
   color: #fff;
   padding: 12px 15px;
   text-align: right;
-  box-shadow: 0 9px 22px rgba(0,125,121,.22);
   animation: install-app-pulse 2.8s ease-in-out infinite;
 }
 .install-app-cta[hidden] { display: none; }
@@ -65,17 +64,26 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
 .install-app-icon { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #ffffff50; border-radius: 13px; background: #ffffff20; }
 .install-app-icon svg { width: 23px; height: 23px; }
 .install-app-copy { display: grid; gap: 2px; min-width: 0; }
-.install-app-copy strong { font-size: 15px; line-height: 1.5; }
-.install-app-copy small { color: #e2fffc; font-size: 11px; line-height: 1.5; }
-.install-app-action { border: 1px solid #ffffff70; border-radius: 9px; background: #ffffff18; padding: 6px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.install-app-copy strong { --install-auth-text-color: #fff; color: #fff; font-size: 15px; line-height: 1.5; animation: install-auth-text-pulse 1.5s ease-in-out infinite; }
+.install-app-copy small { --install-auth-text-color: #e2fffc; color: #e2fffc; font-size: 11px; line-height: 1.5; animation: install-auth-text-pulse 1.5s ease-in-out infinite; }
+.install-app-action { --install-auth-text-color: #fff; border: 1px solid #ffffff70; border-radius: 9px; background: #ffffff18; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; animation: install-auth-text-pulse 1.5s ease-in-out infinite; }
+.install-app-cta svg { animation: install-auth-arrow-pulse 1.5s ease-in-out infinite; }
 .install-instructions { margin: -8px 0 20px; color: var(--ink); font-size: 13px; line-height: 1.9; }
 .install-instructions p { margin: 0 0 7px; }
 .install-instructions ol { display: grid; gap: 4px; margin: 0; padding-inline-start: 22px; }
 .modal-backdrop:has(.install-instructions) > .modal { width: min(calc(100vw - 24px), 420px); }
 .install-instructions + .primary-button { width: 100%; }
 @keyframes install-app-pulse {
-  0%, 100% { transform: translateY(0); box-shadow: 0 9px 22px rgba(0,125,121,.18); }
-  50% { transform: translateY(-2px); box-shadow: 0 13px 28px rgba(0,125,121,.3); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+}
+@keyframes install-auth-arrow-pulse {
+  0%, 100% { color: inherit; transform: translateY(0) scale(1); }
+  50% { color: #e05252; transform: translateY(-2px) scale(1.12); }
+}
+@keyframes install-auth-text-pulse {
+  0%, 100% { color: var(--install-auth-text-color); }
+  50% { color: #e05252; }
 }
 .auth-form, .service-form { display: grid; gap: 15px; }
 .auth-field { display: grid; gap: 8px; }
@@ -270,6 +278,10 @@ textarea { resize: vertical; min-height: 82px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .install-app-cta,
+  .install-app-cta svg,
+  .install-app-copy strong,
+  .install-app-copy small,
+  .install-app-action,
   .install-app-topbar svg { animation: none; }
 }
 .topbar .search-box { min-height: 50px; }
