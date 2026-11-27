@@ -1976,6 +1976,7 @@ function renderInvoicesSection() {
   const titleGroup = document.querySelector<HTMLElement>('#main-section-title-group')
   if (!content || !titleGroup) return
   const search = getMainSearchQuery()
+  const activeStatusFilter: InvoiceStatusFilter = search ? 'all' : invoiceStatusFilter
   const matchingRoots = [...invoiceRecords]
     .filter((record) => record.rootId === record.id)
     .sort((a, b) => Number(b.rootInvoiceNumber || b.invoiceNumber) - Number(a.rootInvoiceNumber || a.invoiceNumber))
@@ -1994,10 +1995,10 @@ function renderInvoicesSection() {
       ].join(' ').toLocaleLowerCase('ar').includes(search)
     })
   const roots = matchingRoots.filter((record) => {
-    if (invoiceStatusFilter === 'all') return true
+    if (activeStatusFilter === 'all') return true
     const versions = getInvoiceRootVersions(record.rootId)
     const latest = versions[versions.length - 1] || record
-    return getInvoicePaymentStatus(latest).key === invoiceStatusFilter
+    return getInvoicePaymentStatus(latest).key === activeStatusFilter
   })
   const filters: { value: InvoiceStatusFilter; label: string }[] = [
     { value: 'all', label: 'الكل' },
@@ -2007,9 +2008,9 @@ function renderInvoicesSection() {
   ]
   titleGroup.querySelector('.invoice-status-filters')?.remove()
   titleGroup.insertAdjacentHTML('beforeend', `
-    <div class="invoice-status-filters" role="group" aria-label="تصفية الفواتير حسب الحالة">
+    <div class="invoice-status-filters" role="group" aria-label="${search ? 'البحث يشمل جميع حالات الفواتير' : 'تصفية الفواتير حسب الحالة'}">
       ${filters.map(({ value, label }) => `
-        <button type="button" data-invoice-status-filter="${value}" aria-pressed="${invoiceStatusFilter === value}" class="${invoiceStatusFilter === value ? 'active' : ''}">${label}</button>
+        <button type="button" data-invoice-status-filter="${value}" aria-pressed="${activeStatusFilter === value}" class="${activeStatusFilter === value ? 'active' : ''}" ${search && value !== 'all' ? 'disabled' : ''}>${label}</button>
       `).join('')}
     </div>
   `)
@@ -2031,12 +2032,12 @@ function renderInvoicesSection() {
 
   const emptyTitle = !invoiceRecords.length
     ? 'لا توجد فواتير محفوظة'
-    : invoiceStatusFilter !== 'all' && matchingRoots.length > 0
+    : activeStatusFilter !== 'all' && matchingRoots.length > 0
       ? 'لا توجد فواتير بهذه الحالة'
       : 'لا توجد نتائج'
   const emptyDescription = !invoiceRecords.length
     ? 'سيتم حفظ كل فاتورة يتم تصديرها هنا تلقائيًا.'
-    : invoiceStatusFilter !== 'all' && matchingRoots.length > 0
+    : activeStatusFilter !== 'all' && matchingRoots.length > 0
       ? 'جرّب نوع تصفية مختلفًا أو عدّل كلمة البحث.'
       : 'جرّب كلمة بحث مختلفة.'
   content.innerHTML = roots.length ? `
