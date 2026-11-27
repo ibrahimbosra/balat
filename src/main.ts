@@ -876,8 +876,6 @@ function renderCustomersSection() {
               : { key: 'unpaid', label: 'غير مسدد' }
         return `
           <article class="service-row customer-row">
-            ${paymentStatus ? `<span class="invoice-status-badge is-${paymentStatus.key}" aria-label="حالة الفواتير: ${paymentStatus.label}">${paymentStatus.label}</span>` : ''}
-            <button class="customer-account-button" type="button" data-account-customer="${customer.id}" aria-label="فتح كشف حساب ${escapeHtml(customer.name)}">كشف حساب</button>
             <span class="service-order" aria-label="رقم الزبون ${index + 1}">${index + 1}</span>
             <button class="service-main customer-main" type="button" data-edit-customer="${customer.id}">
               <span class="customer-identity-line">
@@ -907,6 +905,10 @@ function renderCustomersSection() {
                 </span>
               </span>
             </button>
+            <div class="customer-status-actions">
+              <button class="customer-account-button" type="button" data-account-customer="${customer.id}" aria-label="فتح كشف حساب ${escapeHtml(customer.name)}">كشف حساب</button>
+              ${paymentStatus ? `<span class="invoice-status-badge is-${paymentStatus.key}" aria-label="حالة الفواتير: ${paymentStatus.label}">${paymentStatus.label}</span>` : ''}
+            </div>
           </article>
         `
       }).join('')}
