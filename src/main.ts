@@ -2208,9 +2208,9 @@ function renderProductsShell() {
         <button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button>
       </header>
       <nav class="main-sections" aria-label="الأقسام">
-        <button type="button" data-main-section="services" class="active">الخدمات والأسعار</button>
+        <button type="button" data-main-section="services" class="active">الخدمات</button>
         <button type="button" data-main-section="customers">الزبائن</button>
-        <button type="button" data-main-section="invoices">سجل الفواتير</button>
+        <button type="button" data-main-section="invoices">الفواتير</button>
       </nav>
       <section class="list-head" id="main-section-head">
         <div class="list-head-title-group" id="main-section-title-group">
