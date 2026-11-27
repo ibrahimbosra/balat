@@ -98,6 +98,8 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
 .customer-form .customer-notes-field,
 .customer-form #customer-error,
 .customer-form .modal-actions { grid-column: 1 / -1; }
+.customer-form .modal-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.customer-form .modal-actions > button { min-width: 0; padding-inline: 6px; font-size: 13px; }
 label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; }
 input, select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 11px; outline: 0; background: #fff; color: var(--ink); padding: 13px 14px; font-size: 14px; }
 input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px #007d7918; }

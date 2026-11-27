@@ -2210,8 +2210,8 @@ function renderCustomerEditor(existing?: Customer) {
       <div class="modal-actions">
         ${existing
           ? `<button class="danger-button" id="delete-customer" data-customer-id="${escapeHtml(existing.id)}" type="button" ${!invoicesLoaded || initiallyLinkedInvoices ? 'disabled' : ''}>${!invoicesLoaded ? 'جارٍ التحقق من الفواتير' : initiallyLinkedInvoices ? 'لا يمكن الحذف لوجود فواتير' : 'حذف نهائي'}</button>
-            <button class="primary-button" id="save-customer" type="submit">حفظ التعديل</button>
-            <button class="secondary-button" type="submit" data-customer-action="${existing.archived ? 'restore' : 'archive'}">${existing.archived ? 'استعادة الزبون' : 'أرشفة الزبون'}</button>`
+            <button class="secondary-button" type="submit" data-customer-action="${existing.archived ? 'restore' : 'archive'}">${existing.archived ? 'استعادة الزبون' : 'أرشفة الزبون'}</button>
+            <button class="primary-button" id="save-customer" type="submit">حفظ التعديل</button>`
           : '<button class="secondary-button" id="cancel-customer" type="button">إلغاء</button><button class="primary-button" id="save-customer" type="submit">حفظ الزبون</button>'}
       </div>
     </form>`)
