@@ -626,7 +626,7 @@ function friendlyError(error: unknown) {
 }
 
 function renderBootstrap(message = 'جارٍ استعادة جلستك...') {
-  appRoot.innerHTML = `<main class="bootstrap"><div class="brand-mark">أعمال</div><p>${message}</p></main>`
+  appRoot.innerHTML = `<main class="bootstrap"><img class="brand-mark" src="${import.meta.env.BASE_URL}icon-192.png" alt="أعمال"><p>${message}</p></main>`
 }
 
 function attachPasswordToggle(button: HTMLButtonElement) {
@@ -656,7 +656,7 @@ function renderAuth(
   appRoot.innerHTML = `
     <main class="auth-page">
       <div class="brand-header">
-        <div class="brand-mark">أعمال</div>
+        <img class="brand-mark" src="${import.meta.env.BASE_URL}icon-192.png" alt="أعمال">
         <div class="brand-copy">
           <p class="eyebrow">إدارة أعمالك باحتراف</p>
           <p class="auth-copy">نظّم خدماتك وعملاءك وفواتيرك ومدفوعاتك في مكان واحد.</p>

@@ -36,7 +36,7 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
 .bootstrap { display: grid; place-items: center; align-content: center; gap: 17px; min-height: 100svh; color: var(--muted); }
 .auth-page { width: min(100% - 40px, 460px); min-height: 100svh; margin: auto; padding: 14vh 0 40px; }
 .brand-header { display: grid; justify-items: center; gap: 10px; margin-bottom: 10px; }
-.brand-mark { display: grid; place-items: center; width: 78px; height: 56px; border-radius: 16px 16px 8px 16px; color: #fff; background: linear-gradient(135deg, #0a8a85, #006a66); box-shadow: 0 12px 22px rgba(0,125,121,.22); font-size: 15px; font-weight: 800; }
+.brand-mark { display: block; width: 96px; height: 96px; border-radius: 20px; object-fit: cover; }
 .brand-copy { display: grid; justify-items: center; gap: 3px; text-align: center; }
 .eyebrow { margin: 0; color: var(--teal); font-size: 12px; }
 .auth-copy { margin: 0 0 34px; color: var(--muted); font-size: 14px; text-align: center; }
