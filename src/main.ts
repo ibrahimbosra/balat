@@ -2222,8 +2222,8 @@ function renderProductsShell() {
         <h1>الخدمات والأسعار</h1>
         </div>
         <div class="list-head-actions">
-          <button type="button" class="icon-button add-button services-export-button" id="open-export" aria-label="تصدير قائمة أسعار الخدمات" title="تصدير قائمة أسعار الخدمات" hidden><span>تصدير قائمة أسعار الخدمات</span></button>
           <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة"><span>إضافة خدمة</span></button>
+          <button type="button" class="icon-button add-button services-export-button" id="open-export" aria-label="تصدير قائمة أسعار الخدمات" title="تصدير قائمة أسعار الخدمات" hidden><span>تصدير قائمة أسعار الخدمات</span></button>
         </div>
       </section>
       <section id="main-section-content"><section class="service-list" id="services-shell-list"></section></section>
