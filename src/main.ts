@@ -177,6 +177,7 @@ type InvoiceRecord = {
 }
 
 type MainSection = 'services' | 'customers' | 'invoices'
+type InvoiceStatusFilter = 'all' | 'paid' | 'partial' | 'unpaid'
 
 const defaultSettings: AppSettings = {
   syriaEnabled: false,
@@ -199,6 +200,7 @@ let workServices: WorkService[] = []
 let customers: Customer[] = []
 let invoiceRecords: InvoiceRecord[] = []
 let customerListView: 'active' | 'archived' = 'active'
+let invoiceStatusFilter: InvoiceStatusFilter = 'all'
 let invoicesLoaded = false
 let unsubscribeServices: () => void = () => undefined
 let unsubscribeCustomers: () => void = () => undefined
@@ -766,13 +768,11 @@ function getMainSearchQuery() {
 function updateServicesShell() {
   if (activeMainSection !== 'services') return
   const list = document.querySelector<HTMLElement>('#services-shell-list')
-  const count = document.querySelector<HTMLElement>('#service-count')
   if (!list) return
   const search = getMainSearchQuery()
   const visible = workServices
     .filter((service) => service.name.toLocaleLowerCase('ar').includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
-  if (count) count.textContent = String(visible.length)
   list.innerHTML = visible.length ? visible.map((service, index) => {
     const dollarPrice = service.currencyCode === 'USD'
       ? service.price
@@ -846,7 +846,6 @@ function getCustomerInvoiceSummaries() {
 function renderCustomersSection() {
   const content = document.querySelector<HTMLElement>('#main-section-content')
   const titleGroup = document.querySelector<HTMLElement>('#main-section-title-group')
-  const count = document.querySelector<HTMLElement>('#service-count')
   if (!content || !titleGroup) return
   const invoiceSummaries = getCustomerInvoiceSummaries()
   const search = getMainSearchQuery()
@@ -856,7 +855,6 @@ function renderCustomersSection() {
   const visible = matchingView
     .filter((customer) => [customer.name, customer.phone, customer.address, customer.neighborhood, customer.notes].join(' ').toLocaleLowerCase('ar').includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
-  if (count) count.textContent = String(visible.length)
   titleGroup.querySelector('.customer-view-switcher')?.remove()
   titleGroup.insertAdjacentHTML('beforeend', `
     <div class="customer-view-switcher" role="tablist" aria-label="قائمة الزبائن">
@@ -1974,10 +1972,10 @@ async function exportCustomerAccountStatement(
 
 function renderInvoicesSection() {
   const content = document.querySelector<HTMLElement>('#main-section-content')
-  const count = document.querySelector<HTMLElement>('#service-count')
-  if (!content) return
+  const titleGroup = document.querySelector<HTMLElement>('#main-section-title-group')
+  if (!content || !titleGroup) return
   const search = getMainSearchQuery()
-  const roots = [...invoiceRecords]
+  const matchingRoots = [...invoiceRecords]
     .filter((record) => record.rootId === record.id)
     .sort((a, b) => Number(b.rootInvoiceNumber || b.invoiceNumber) - Number(a.rootInvoiceNumber || a.invoiceNumber))
     .filter((record) => {
@@ -1994,7 +1992,34 @@ function renderInvoicesSection() {
         latest.workshopName ? `ورشة ${latest.workshopName}` : '',
       ].join(' ').toLocaleLowerCase('ar').includes(search)
     })
-  if (count) count.textContent = String(roots.length)
+  const roots = matchingRoots.filter((record) => {
+    if (invoiceStatusFilter === 'all') return true
+    const versions = getInvoiceRootVersions(record.rootId)
+    const latest = versions[versions.length - 1] || record
+    return getInvoicePaymentStatus(latest).key === invoiceStatusFilter
+  })
+  const filters: { value: InvoiceStatusFilter; label: string }[] = [
+    { value: 'all', label: 'الكل' },
+    { value: 'paid', label: 'مسددة' },
+    { value: 'partial', label: 'مسددة جزئيًا' },
+    { value: 'unpaid', label: 'غير مسددة' },
+  ]
+  titleGroup.querySelector('.invoice-status-filters')?.remove()
+  titleGroup.insertAdjacentHTML('beforeend', `
+    <div class="invoice-status-filters" role="group" aria-label="تصفية الفواتير حسب الحالة">
+      ${filters.map(({ value, label }) => `
+        <button type="button" data-invoice-status-filter="${value}" aria-pressed="${invoiceStatusFilter === value}" class="${invoiceStatusFilter === value ? 'active' : ''}">${label}</button>
+      `).join('')}
+    </div>
+  `)
+  titleGroup.querySelectorAll<HTMLButtonElement>('[data-invoice-status-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const filter = button.dataset.invoiceStatusFilter
+      if (filter !== 'all' && filter !== 'paid' && filter !== 'partial' && filter !== 'unpaid') return
+      invoiceStatusFilter = filter
+      renderInvoicesSection()
+    })
+  })
   const formatDisplayDateTime = (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) return '—'
@@ -2003,6 +2028,16 @@ function renderInvoicesSection() {
     return Number.isNaN(date.getTime()) ? (isoLike || '—') : formatInvoiceDateTime(date)
   }
 
+  const emptyTitle = !invoiceRecords.length
+    ? 'لا توجد فواتير محفوظة'
+    : invoiceStatusFilter !== 'all' && matchingRoots.length > 0
+      ? 'لا توجد فواتير بهذه الحالة'
+      : 'لا توجد نتائج'
+  const emptyDescription = !invoiceRecords.length
+    ? 'سيتم حفظ كل فاتورة يتم تصديرها هنا تلقائيًا.'
+    : invoiceStatusFilter !== 'all' && matchingRoots.length > 0
+      ? 'جرّب نوع تصفية مختلفًا أو عدّل كلمة البحث.'
+      : 'جرّب كلمة بحث مختلفة.'
   content.innerHTML = roots.length ? `
     <section class="service-list invoices-list invoice-summary-list">
       ${roots.map((record, index) => {
@@ -2094,7 +2129,7 @@ function renderInvoicesSection() {
         `
       }).join('')}
     </section>
-  ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${invoiceRecords.length ? 'لا توجد نتائج' : 'لا توجد فواتير محفوظة'}</h2><p>${invoiceRecords.length ? 'جرّب كلمة بحث مختلفة.' : 'سيتم حفظ كل فاتورة يتم تصديرها هنا تلقائيًا.'}</p></div>`
+  ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${emptyTitle}</h2><p>${emptyDescription}</p></div>`
   content.querySelectorAll<HTMLButtonElement>('[data-open-invoice-root]').forEach((button) => {
     button.addEventListener('click', () => {
       const rootId = button.dataset.openInvoiceRoot
@@ -2142,15 +2177,18 @@ function renderActiveSection() {
   if (activeMainSection !== 'customers') {
     document.querySelector('#main-section-title-group .customer-view-switcher')?.remove()
   }
+  if (activeMainSection !== 'invoices') {
+    document.querySelector('#main-section-title-group .invoice-status-filters')?.remove()
+  }
   if (activeMainSection === 'services') {
-    head.innerHTML = `الخدمات والأسعار <span id="service-count"></span>`
+    head.textContent = 'الخدمات والأسعار'
     content.innerHTML = '<section class="service-list" id="services-shell-list"></section>'
     updateServicesShell()
   } else if (activeMainSection === 'customers') {
-    head.innerHTML = `الزبائن <span id="service-count"></span>`
+    head.textContent = 'الزبائن'
     renderCustomersSection()
   } else {
-    head.innerHTML = `سجل الفواتير <span id="service-count"></span>`
+    head.textContent = 'سجل الفواتير'
     renderInvoicesSection()
   }
   document.querySelectorAll<HTMLButtonElement>('[data-main-section]').forEach((button) => {
@@ -2174,7 +2212,7 @@ function renderProductsShell() {
       </nav>
       <section class="list-head" id="main-section-head">
         <div class="list-head-title-group" id="main-section-title-group">
-          <h1>الخدمات والأسعار <span id="service-count"></span></h1>
+        <h1>الخدمات والأسعار</h1>
         </div>
         <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة">${svg('plus')}<span>إضافة خدمة</span></button>
       </section>
@@ -6886,6 +6924,7 @@ async function startAuth() {
     customers = []
     invoiceRecords = []
     customerListView = 'active'
+    invoiceStatusFilter = 'all'
     invoicesLoaded = false
     activeMainSection = 'services'
     if (!user) {
