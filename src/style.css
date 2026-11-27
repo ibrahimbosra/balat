@@ -1037,15 +1037,10 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   margin: 0 44px 16px;
   text-align: center;
 }
-.modal.invoice-export-dialog > .eyebrow {
-  flex: 0 0 auto;
-  margin: 4px 44px 12px;
-  text-align: center;
-}
 .modal.invoice-export-dialog > h2 {
   flex: 0 0 auto;
-  margin: 0 44px 16px;
-  text-align: center;
+  margin: -4px 44px 16px;
+  text-align: right;
 }
 .modal:has(.export-tabs) #export-services-panel,
 .modal:has(.export-tabs) #export-invoice-panel {
@@ -3129,8 +3124,7 @@ body.dark-mode .cancel-delete-confirm:hover { background: #214c40; }
     border-radius: 18px;
     padding: 18px 10px 12px;
   }
-  .modal.invoice-export-dialog > .eyebrow { margin: 2px 44px 8px; }
-  .modal.invoice-export-dialog > h2 { margin: 0 44px 12px; }
+  .modal.invoice-export-dialog > h2 { margin: 2px 44px 12px; text-align: right; }
   .modal:has(.export-tabs) > .eyebrow {
     margin: 2px 44px 8px;
   }

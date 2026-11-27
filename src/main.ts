@@ -6170,8 +6170,8 @@ function renderExportDialog(options?: {
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     ${options?.correction
       ? `<h2>تصحيح حساب الفاتورة رقم ${escapeHtml(correctionInvoiceNumber)}</h2>`
-      : `<p class="eyebrow">${entryMode === 'invoice' ? 'إضافة فاتورة' : 'تجهيز فاتورة'}</p>
-        <h2>${entryMode === 'invoice' ? 'حساب فاتورة' : 'تجهيز نافذة فاتورة'}</h2>
+      : `${entryMode === 'both' ? '<p class="eyebrow">تجهيز فاتورة</p>' : ''}
+        <h2>${entryMode === 'invoice' ? 'حساب فاتورة' : entryMode === 'services' ? 'تجهيز فاتورة بالخدمات' : 'تجهيز نافذة فاتورة'}</h2>
         ${entryMode === 'both' ? `<div class="export-tabs">
           <button class="active" type="button" data-export-tab="invoice">حساب فاتورة</button>
           <button type="button" data-export-tab="services">الخدمات</button>
