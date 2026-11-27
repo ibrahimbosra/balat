@@ -2159,6 +2159,7 @@ function renderActiveSection() {
   const content = document.querySelector<HTMLElement>('#main-section-content')
   const search = document.querySelector<HTMLInputElement>('#main-search')
   const addButton = document.querySelector<HTMLButtonElement>('#main-add')
+  const servicesExportButton = document.querySelector<HTMLButtonElement>('#open-export')
   if (!head || !content) return
   if (search) {
     search.classList.toggle('invoice-search-input', activeMainSection === 'invoices')
@@ -2180,6 +2181,7 @@ function renderActiveSection() {
     addButton.title = label
     addButton.innerHTML = `<span>${label}</span>`
   }
+  if (servicesExportButton) servicesExportButton.hidden = activeMainSection !== 'services'
   if (activeMainSection !== 'customers') {
     document.querySelector('#main-section-title-group .customer-view-switcher')?.remove()
   }
@@ -2208,7 +2210,6 @@ function renderProductsShell() {
     <main class="products-page">
       <header class="topbar">
         <div class="search-box">${svg('search')}<input id="main-search" type="search" placeholder="ابحث عن خدمة..." autocomplete="off"></div>
-        <button class="icon-button" id="open-export" aria-label="تجهيز فاتورة" title="تجهيز فاتورة">${svg('invoice')}</button>
         <button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button>
       </header>
       <nav class="main-sections" aria-label="الأقسام">
@@ -2220,7 +2221,10 @@ function renderProductsShell() {
         <div class="list-head-title-group" id="main-section-title-group">
         <h1>الخدمات والأسعار</h1>
         </div>
-        <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة"><span>إضافة خدمة</span></button>
+        <div class="list-head-actions">
+          <button type="button" class="icon-button add-button services-export-button" id="open-export" aria-label="تصدير قائمة أسعار الخدمات" title="تصدير قائمة أسعار الخدمات" hidden><span>تصدير قائمة أسعار الخدمات</span></button>
+          <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة"><span>إضافة خدمة</span></button>
+        </div>
       </section>
       <section id="main-section-content"><section class="service-list" id="services-shell-list"></section></section>
     </main>`
@@ -6171,7 +6175,8 @@ function renderExportDialog(options?: {
     ${options?.correction
       ? `<h2>تصحيح حساب الفاتورة رقم ${escapeHtml(correctionInvoiceNumber)}</h2>`
       : `${entryMode === 'both' ? '<p class="eyebrow">تجهيز فاتورة</p>' : ''}
-        <h2>${entryMode === 'invoice' ? 'حساب فاتورة' : entryMode === 'services' ? 'تجهيز فاتورة بالخدمات' : 'تجهيز نافذة فاتورة'}</h2>
+        <h2>${entryMode === 'invoice' ? 'حساب فاتورة' : entryMode === 'services' ? 'تصدير قائمة أسعار الخدمات' : 'تجهيز نافذة فاتورة'}</h2>
+        ${entryMode === 'services' ? '<p class="export-services-note">تنبيه: هذا الخيار لتصدير أسعار الخدمات التي تقدمها، وليس لحساب فاتورة لأعمال منفّذة.</p>' : ''}
         ${entryMode === 'both' ? `<div class="export-tabs">
           <button class="active" type="button" data-export-tab="invoice">حساب فاتورة</button>
           <button type="button" data-export-tab="services">الخدمات</button>
