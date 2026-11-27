@@ -845,8 +845,9 @@ function getCustomerInvoiceSummaries() {
 
 function renderCustomersSection() {
   const content = document.querySelector<HTMLElement>('#main-section-content')
+  const titleGroup = document.querySelector<HTMLElement>('#main-section-title-group')
   const count = document.querySelector<HTMLElement>('#service-count')
-  if (!content) return
+  if (!content || !titleGroup) return
   const invoiceSummaries = getCustomerInvoiceSummaries()
   const search = getMainSearchQuery()
   const activeCount = customers.filter((customer) => !customer.archived).length
@@ -856,12 +857,15 @@ function renderCustomersSection() {
     .filter((customer) => [customer.name, customer.phone, customer.address, customer.neighborhood, customer.notes].join(' ').toLocaleLowerCase('ar').includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
   if (count) count.textContent = String(visible.length)
-  content.innerHTML = `
+  titleGroup.querySelector('.customer-view-switcher')?.remove()
+  titleGroup.insertAdjacentHTML('beforeend', `
     <div class="customer-view-switcher" role="tablist" aria-label="قائمة الزبائن">
       <button type="button" role="tab" data-customer-view="active" aria-selected="${customerListView === 'active'}" class="${customerListView === 'active' ? 'active' : ''}">النشطون <span>${activeCount}</span></button>
       <button type="button" role="tab" data-customer-view="archived" aria-selected="${customerListView === 'archived'}" class="${customerListView === 'archived' ? 'active' : ''}">الأرشيف <span>${archivedCount}</span></button>
     </div>
-    ${visible.length ? `
+  `)
+  const viewSwitcher = titleGroup.querySelector<HTMLElement>('.customer-view-switcher')!
+  content.innerHTML = visible.length ? `
     <section class="service-list customers-list">
       ${visible.map((customer, index) => {
         const summary = invoiceSummaries.get(customer.id) || { total: 0, paid: 0, remaining: 0 }
@@ -909,8 +913,8 @@ function renderCustomersSection() {
         `
       }).join('')}
     </section>
-    ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${matchingView.length ? 'لا توجد نتائج' : customerListView === 'archived' ? 'لا يوجد زبائن في الأرشيف' : customers.length ? 'لا يوجد زبائن نشطون' : 'ابدأ بإضافة أول زبون'}</h2><p>${matchingView.length ? 'جرّب كلمة بحث مختلفة.' : customerListView === 'archived' ? 'ستظهر هنا الزبائن الذين أرشفتهم، ويمكنك استعادتها في أي وقت.' : customers.length ? 'يمكنك استعادة زبون من الأرشيف أو إضافة زبون جديد.' : 'أضف اسم الزبون ورقم الهاتف والعنوان والملاحظات.'}</p></div>`}`
-  content.querySelectorAll<HTMLButtonElement>('[data-customer-view]').forEach((button) => {
+    ` : `<div class="empty-state"><div class="empty-icon">⌕</div><h2>${matchingView.length ? 'لا توجد نتائج' : customerListView === 'archived' ? 'لا يوجد زبائن في الأرشيف' : customers.length ? 'لا يوجد زبائن نشطون' : 'ابدأ بإضافة أول زبون'}</h2><p>${matchingView.length ? 'جرّب كلمة بحث مختلفة.' : customerListView === 'archived' ? 'ستظهر هنا الزبائن الذين أرشفتهم، ويمكنك استعادتها في أي وقت.' : customers.length ? 'يمكنك استعادة زبون من الأرشيف أو إضافة زبون جديد.' : 'أضف اسم الزبون ورقم الهاتف والعنوان والملاحظات.'}</p></div>`
+  viewSwitcher.querySelectorAll<HTMLButtonElement>('[data-customer-view]').forEach((button) => {
     button.addEventListener('click', () => {
       customerListView = button.dataset.customerView === 'archived' ? 'archived' : 'active'
       renderCustomersSection()
@@ -2135,6 +2139,9 @@ function renderActiveSection() {
     addButton.title = label
     addButton.innerHTML = `${svg('plus')}<span>${label}</span>`
   }
+  if (activeMainSection !== 'customers') {
+    document.querySelector('#main-section-title-group .customer-view-switcher')?.remove()
+  }
   if (activeMainSection === 'services') {
     head.innerHTML = `الخدمات والأسعار <span id="service-count"></span>`
     content.innerHTML = '<section class="service-list" id="services-shell-list"></section>'
@@ -2166,7 +2173,9 @@ function renderProductsShell() {
         <button type="button" data-main-section="invoices">سجل الفواتير</button>
       </nav>
       <section class="list-head" id="main-section-head">
-        <h1>الخدمات والأسعار <span id="service-count"></span></h1>
+        <div class="list-head-title-group" id="main-section-title-group">
+          <h1>الخدمات والأسعار <span id="service-count"></span></h1>
+        </div>
         <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة">${svg('plus')}<span>إضافة خدمة</span></button>
       </section>
       <section id="main-section-content"><section class="service-list" id="services-shell-list"></section></section>
