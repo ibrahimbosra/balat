@@ -208,8 +208,7 @@ let unsubscribeInvoices: () => void = () => undefined
 
 const settingsKey = (ownerId: string) => `asaar-settings-${ownerId}`
 
-const icon = (name: 'plus' | 'settings' | 'search' | 'download' | 'invoice' | 'close' | 'eye' | 'eye-off' | 'users' | 'history' | 'edit' | 'trash') => ({
-  plus: '<path d="M12 5v14M5 12h14"/>',
+const icon = (name: 'settings' | 'search' | 'download' | 'invoice' | 'close' | 'eye' | 'eye-off' | 'users' | 'history' | 'edit' | 'trash') => ({
   settings: '<path d="M12 3.5a2 2 0 0 1 2 2v.2a6.8 6.8 0 0 1 1.8 1l.2-.1a2 2 0 1 1 2 3.5l-.2.1a6.8 6.8 0 0 1 0 2.1l.2.1a2 2 0 1 1-2 3.5l-.2-.1a6.8 6.8 0 0 1-1.8 1v.2a2 2 0 1 1-4 0v-.2a6.8 6.8 0 0 1-1.8-1l-.2.1a2 2 0 1 1-2-3.5l.2-.1a6.8 6.8 0 0 1 0-2.1l-.2-.1a2 2 0 1 1 2-3.5l.2.1a6.8 6.8 0 0 1 1.8-1v-.2a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12" r="2.5"/>',
   search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/>',
   download: '<path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/>',
@@ -223,7 +222,7 @@ const icon = (name: 'plus' | 'settings' | 'search' | 'download' | 'invoice' | 'c
   trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
 }[name])
 
-const svg = (name: 'plus' | 'settings' | 'search' | 'download' | 'invoice' | 'close' | 'eye' | 'eye-off' | 'users' | 'history' | 'edit' | 'trash') =>
+const svg = (name: 'settings' | 'search' | 'download' | 'invoice' | 'close' | 'eye' | 'eye-off' | 'users' | 'history' | 'edit' | 'trash') =>
   `<svg viewBox="0 0 24 24" aria-hidden="true">${icon(name)}</svg>`
 
 const money = (value: number) =>
@@ -2170,11 +2169,15 @@ function renderActiveSection() {
     search.value = ''
   }
   if (addButton) {
-    addButton.hidden = activeMainSection === 'invoices'
-    const label = activeMainSection === 'customers' ? 'إضافة زبون' : 'إضافة خدمة'
+    addButton.hidden = false
+    const label = activeMainSection === 'customers'
+      ? 'إضافة زبون'
+      : activeMainSection === 'invoices'
+        ? 'إضافة فاتورة'
+        : 'إضافة خدمة'
     addButton.setAttribute('aria-label', label)
     addButton.title = label
-    addButton.innerHTML = `${svg('plus')}<span>${label}</span>`
+    addButton.innerHTML = `<span>${label}</span>`
   }
   if (activeMainSection !== 'customers') {
     document.querySelector('#main-section-title-group .customer-view-switcher')?.remove()
@@ -2216,7 +2219,7 @@ function renderProductsShell() {
         <div class="list-head-title-group" id="main-section-title-group">
         <h1>الخدمات والأسعار</h1>
         </div>
-        <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة">${svg('plus')}<span>إضافة خدمة</span></button>
+        <button type="button" class="icon-button add-button" id="main-add" aria-label="إضافة خدمة" title="إضافة خدمة"><span>إضافة خدمة</span></button>
       </section>
       <section id="main-section-content"><section class="service-list" id="services-shell-list"></section></section>
     </main>`
@@ -2227,9 +2230,10 @@ function renderProductsShell() {
   })
   document.querySelector('#main-add')!.addEventListener('click', () => {
     if (activeMainSection === 'customers') renderCustomerEditor()
+    else if (activeMainSection === 'invoices') renderExportDialog({ entryMode: 'invoice' })
     else renderServiceEditor()
   })
-  document.querySelector('#open-export')!.addEventListener('click', () => renderExportDialog())
+  document.querySelector('#open-export')!.addEventListener('click', () => renderExportDialog({ entryMode: 'services' }))
   document.querySelector('#open-settings')!.addEventListener('click', renderSettings)
   document.querySelectorAll<HTMLButtonElement>('[data-main-section]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -6143,8 +6147,15 @@ function openInvoiceCustomerExportDialog(
   cancelButton.focus()
 }
 
-function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePayments?: InvoicePayment[]; correction?: boolean }) {
-  if (!workServices.length && !options?.sourceRecord) {
+function renderExportDialog(options?: {
+  sourceRecord?: InvoiceRecord
+  savePayments?: InvoicePayment[]
+  correction?: boolean
+  entryMode?: 'invoice' | 'services' | 'both'
+}) {
+  const entryMode = options?.correction ? 'invoice' : options?.entryMode ?? 'both'
+  const showServicesPanel = entryMode === 'services'
+  if (!workServices.length && !options?.sourceRecord && entryMode !== 'invoice') {
     showToast('لا توجد خدمات للتصدير.')
     return
   }
@@ -6158,13 +6169,13 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
     ${options?.correction
       ? `<h2>تصحيح حساب الفاتورة رقم ${escapeHtml(correctionInvoiceNumber)}</h2>`
-      : `<p class="eyebrow">تجهيز فاتورة</p>
-        <h2>تجهيز نافذة فاتورة</h2>
-        <div class="export-tabs">
+      : `<p class="eyebrow">${entryMode === 'invoice' ? 'إضافة فاتورة' : 'تجهيز فاتورة'}</p>
+        <h2>${entryMode === 'invoice' ? 'حساب فاتورة' : 'تجهيز نافذة فاتورة'}</h2>
+        ${entryMode === 'both' ? `<div class="export-tabs">
           <button class="active" type="button" data-export-tab="invoice">حساب فاتورة</button>
           <button type="button" data-export-tab="services">الخدمات</button>
-        </div>`}
-    <div id="export-services-panel" hidden class="hidden">
+        </div>` : ''}`}
+    <div id="export-services-panel" ${showServicesPanel ? '' : 'hidden class="hidden"'}>
       <div class="export-service-list"></div>
       <div class="export-summary" aria-live="polite"></div>
       <div class="export-service-actions">
@@ -6172,9 +6183,11 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         <button class="primary-button" id="continue-export-services" type="button">متابعة التجهيز</button>
       </div>
     </div>
-    <div id="export-invoice-panel"></div>`, { preserveExisting: Boolean(options?.correction) })
+    <div id="export-invoice-panel" ${showServicesPanel ? 'hidden class="hidden"' : ''}></div>`, { preserveExisting: Boolean(options?.correction) })
   if (options?.correction) {
     element.querySelector<HTMLElement>('.modal')!.classList.add('invoice-correction-modal')
+  } else if (entryMode !== 'both') {
+    element.querySelector<HTMLElement>('.modal')!.classList.add('invoice-export-dialog')
   }
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
   const list = element.querySelector<HTMLElement>('.export-service-list')!
@@ -6273,7 +6286,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
         </div>
         <div class="invoice-service-picker">
           <button class="invoice-picker-trigger" type="button" data-invoice-picker-trigger aria-haspopup="dialog" aria-controls="invoice-service-picker-menu" aria-expanded="false">
-            <span class="invoice-picker-plus" aria-hidden="true">+</span>
             <span class="invoice-picker-trigger-text">
               <strong>إضافة خدمة إلى الفاتورة</strong>
               <small>اختر من قائمة الخدمات المسجلة</small>
@@ -6285,7 +6297,6 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
               <input type="search" data-invoice-search aria-label="ابحث عن خدمة" placeholder="ابحث عن اسم الخدمة...">
             </label>
             <button class="invoice-picker-custom" type="button" data-invoice-custom>
-              <span class="invoice-picker-custom-plus" aria-hidden="true">+</span>
               <span>
                 <strong>إضافة خدمة غير مسجلة</strong>
                 <small>أدخل اسمها ووحدتها وسعرها يدويًا</small>
@@ -6747,7 +6758,7 @@ function renderExportDialog(options?: { sourceRecord?: InvoiceRecord; savePaymen
       const itemIndex = invoiceItems.findIndex((line) => line.id === itemId)
       if (itemIndex < 0) return
       invoiceItems.splice(itemIndex, 1)
-      renderInvoice()
+      if (!showServicesPanel) renderInvoice()
       return
     }
     if (event.target.closest('[data-invoice-custom]')) {
