@@ -206,6 +206,25 @@ let unsubscribeServices: () => void = () => undefined
 let unsubscribeCustomers: () => void = () => undefined
 let unsubscribeInvoices: () => void = () => undefined
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
+
+const appInstalledStorageKey = 'aamal-app-installed'
+const isStandaloneDisplayMode = () =>
+  window.matchMedia('(display-mode: standalone)').matches
+  || (navigator as Navigator & { standalone?: boolean }).standalone === true
+let appInstalled = isStandaloneDisplayMode()
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null
+if (!appInstalled) {
+  try {
+    appInstalled = localStorage.getItem(appInstalledStorageKey) === 'true'
+  } catch (error) {
+    console.warn('Unable to read the installed app state.', error)
+  }
+}
+
 const settingsKey = (ownerId: string) => `asaar-settings-${ownerId}`
 
 const icon = (name: 'settings' | 'search' | 'download' | 'invoice' | 'close' | 'eye' | 'eye-off' | 'users' | 'history' | 'edit' | 'trash') => ({
@@ -617,6 +636,64 @@ function showToast(message: string) {
   window.setTimeout(() => toast?.classList.remove('is-visible'), 3000)
 }
 
+function updateInstallButtons() {
+  if (isStandaloneDisplayMode()) appInstalled = true
+  document.querySelectorAll<HTMLButtonElement>('[data-install-app]').forEach((button) => {
+    button.hidden = appInstalled
+  })
+  document.querySelector('.topbar')?.classList.toggle('has-install-button', !appInstalled)
+}
+
+function showInstallInstructions() {
+  const userAgent = navigator.userAgent
+  const isAppleMobile = /iPhone|iPad|iPod/.test(userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const isAndroid = /Android/i.test(userAgent)
+  const instructions = isAppleMobile
+    ? '<p>لتثبيت التطبيق على جهاز Apple:</p><ol><li>افتح الصفحة في Safari.</li><li>اضغط زر المشاركة.</li><li>اختر «إضافة إلى الشاشة الرئيسية» ثم «إضافة».</li></ol>'
+    : isAndroid
+      ? '<p>لتثبيت التطبيق على Android:</p><ol><li>افتح قائمة المتصفح ⋮.</li><li>اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</li></ol>'
+      : '<p>افتح قائمة المتصفح واختر «تثبيت التطبيق» أو «إنشاء اختصار» لإضافته إلى جهازك.</p>'
+  const element = modal(`
+    <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
+    <h2>تثبيت تطبيق أعمال</h2>
+    <div class="install-instructions">${instructions}</div>
+    <button class="primary-button" type="button" id="close-install-instructions">حسنًا</button>`)
+  const close = () => element.remove()
+  element.querySelector('.modal-close')!.addEventListener('click', close)
+  element.querySelector('#close-install-instructions')!.addEventListener('click', close)
+}
+
+async function requestAppInstall() {
+  if (appInstalled || isStandaloneDisplayMode()) {
+    appInstalled = true
+    updateInstallButtons()
+    return
+  }
+  const installPrompt = deferredInstallPrompt
+  if (!installPrompt) {
+    showInstallInstructions()
+    return
+  }
+  deferredInstallPrompt = null
+  try {
+    await installPrompt.prompt()
+    const choice = await installPrompt.userChoice
+    if (choice.outcome === 'accepted') {
+      appInstalled = true
+      try {
+        localStorage.setItem(appInstalledStorageKey, 'true')
+      } catch (error) {
+        console.warn('Unable to save the installed app state.', error)
+      }
+      updateInstallButtons()
+    }
+  } catch (error) {
+    console.error('Unable to show the app installation prompt.', error)
+    showToast('تعذر فتح نافذة التثبيت. يمكنك اتباع تعليمات التثبيت من المتصفح.')
+  }
+}
+
 function friendlyError(error: unknown) {
   if (error instanceof CustomerIdentityError) return error.message
   const code = typeof error === 'object' && error && 'code' in error ? String((error as { code: string }).code) : ''
@@ -662,6 +739,11 @@ function renderAuth(
           <p class="auth-copy">نظّم خدماتك وعملاءك وفواتيرك ومدفوعاتك في مكان واحد.</p>
         </div>
       </div>
+      <button class="install-app-cta" id="install-app-auth" data-install-app type="button" aria-label="تثبيت تطبيق أعمال" ${appInstalled ? 'hidden' : ''}>
+        <span class="install-app-icon">${svg('download')}</span>
+        <span class="install-app-copy"><strong>ثبّت تطبيق أعمال</strong><small>وصول أسرع من الشاشة الرئيسية</small></span>
+        <span class="install-app-action">تثبيت</span>
+      </button>
       <div class="auth-header"><h2>${signUp ? 'إنشاء حساب جديد' : 'تسجيل الدخول إلى حسابك'}</h2></div>
       <form id="auth-form" class="auth-form">
         ${signUp ? `<label>الاسم أو اللقب<input name="name" maxlength="60" autocomplete="name" value="${escapeHtml(initial.name || '')}" required></label>
@@ -701,6 +783,8 @@ function renderAuth(
         <button class="text-button" type="button" id="toggle-auth">${signUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب جديد'}</button>
       </form>
     </main>`
+  document.querySelector<HTMLButtonElement>('#install-app-auth')!.addEventListener('click', () => void requestAppInstall())
+  updateInstallButtons()
   const policyLink = document.querySelector<HTMLButtonElement>('#auth-policy-link')!
   policyLink.addEventListener('click', () => openUsagePolicyDialog(policyLink))
   document.querySelectorAll<HTMLButtonElement>('.password-visibility-toggle').forEach(attachPasswordToggle)
@@ -2208,8 +2292,9 @@ function renderProductsShell() {
   applyTheme(settings.darkMode)
   appRoot.innerHTML = `
     <main class="products-page">
-      <header class="topbar">
+      <header class="topbar${appInstalled ? '' : ' has-install-button'}">
         <div class="search-box">${svg('search')}<input id="main-search" type="search" placeholder="ابحث عن خدمة..." autocomplete="off"></div>
+        <button class="icon-button install-app-topbar" id="install-app-topbar" data-install-app type="button" aria-label="تثبيت التطبيق" title="تثبيت التطبيق" ${appInstalled ? 'hidden' : ''}>${svg('download')}</button>
         <button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button>
       </header>
       <nav class="main-sections" aria-label="الأقسام">
@@ -2228,6 +2313,8 @@ function renderProductsShell() {
       </section>
       <section id="main-section-content"><section class="service-list" id="services-shell-list"></section></section>
     </main>`
+  document.querySelector<HTMLButtonElement>('#install-app-topbar')!.addEventListener('click', () => void requestAppInstall())
+  updateInstallButtons()
   document.querySelector<HTMLInputElement>('#main-search')!.addEventListener('input', () => {
     if (activeMainSection === 'services') updateServicesShell()
     else if (activeMainSection === 'customers') renderCustomersSection()
@@ -3408,10 +3495,28 @@ function renderAccountSettings(content: HTMLElement) {
           <button class="primary-button" id="change-account-password" type="submit">تغيير كلمة المرور</button>
         </form>
       </section>
+      <section class="settings-section">
+        <div class="settings-section-heading">
+          <h2>جلسة الحساب</h2>
+          <p>تسجيل الخروج من هذا الحساب على هذا الجهاز.</p>
+        </div>
+        <button class="secondary-button account-logout-button" id="logout" type="button">تسجيل الخروج</button>
+      </section>
       </form>
       </div>
       <div id="measurement-units-preferences-panel" hidden></div>
     </section>`
+
+  const logoutButton = content.querySelector<HTMLButtonElement>('#logout')!
+  logoutButton.addEventListener('click', async () => {
+    logoutButton.disabled = true
+    try {
+      await signOut(auth)
+    } catch (logoutError) {
+      logoutButton.disabled = false
+      showToast(friendlyError(logoutError))
+    }
+  })
 
   const profileForm = content.querySelector<HTMLFormElement>('#account-profile-form')!
   const profileStatus = content.querySelector<HTMLElement>('#account-profile-status')!
@@ -3543,23 +3648,12 @@ function renderCurrencySettings(content: HTMLElement, element: HTMLElement) {
 function renderSystemSettings(content: HTMLElement) {
   content.innerHTML = `
     <h2>النظام</h2>
-    <label class="switch-row"><span>الوضع الليلي</span><input id="dark-mode-toggle" type="checkbox" ${settings.darkMode ? 'checked' : ''}><i></i></label>
-    <div class="account"><span>${escapeHtml(currentUser?.email || '')}</span><button class="text-button" id="logout" type="button">تسجيل الخروج</button></div>`
+    <label class="switch-row"><span>الوضع الليلي</span><input id="dark-mode-toggle" type="checkbox" ${settings.darkMode ? 'checked' : ''}><i></i></label>`
   content.querySelector<HTMLInputElement>('#dark-mode-toggle')!.addEventListener('change', async (event) => {
     settings = { ...settings, darkMode: (event.currentTarget as HTMLInputElement).checked }
     applyTheme(settings.darkMode)
     saveCachedSettings(dataUserId, settings)
     try { await setDoc(doc(db, 'users', dataUserId), settings, { merge: true }) } catch { /* Keep local state. */ }
-  })
-  const logoutButton = content.querySelector<HTMLButtonElement>('#logout')!
-  logoutButton.addEventListener('click', async () => {
-    logoutButton.disabled = true
-    try {
-      await signOut(auth)
-    } catch (logoutError) {
-      logoutButton.disabled = false
-      showToast(friendlyError(logoutError))
-    }
   })
 }
 
@@ -6997,6 +7091,33 @@ async function startAuth() {
     })
   })
 }
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  const installPrompt = event as BeforeInstallPromptEvent
+  if (typeof installPrompt.prompt !== 'function') return
+  event.preventDefault()
+  deferredInstallPrompt = installPrompt
+  if (appInstalled && !isStandaloneDisplayMode()) {
+    appInstalled = false
+    try {
+      localStorage.removeItem(appInstalledStorageKey)
+    } catch (error) {
+      console.warn('Unable to clear the installed app state.', error)
+    }
+  }
+  updateInstallButtons()
+})
+
+window.addEventListener('appinstalled', () => {
+  appInstalled = true
+  deferredInstallPrompt = null
+  try {
+    localStorage.setItem(appInstalledStorageKey, 'true')
+  } catch (error) {
+    console.warn('Unable to save the installed app state.', error)
+  }
+  updateInstallButtons()
+})
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
