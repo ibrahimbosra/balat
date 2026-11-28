@@ -419,11 +419,11 @@ body.dark-mode .main-sections button.active { border-color: #3d7773; background:
   font-size: 14px;
   line-height: 1.35;
 }
-.service-lira-cell {
+.service-secondary-currency-cell {
   border-color: rgba(209,145,57,.24);
   background: #fff8e8;
 }
-.service-lira-cell .service-price { color: #a66a17; }
+.service-secondary-currency-cell .service-price { color: #a66a17; }
 .service-description {
   margin: 0 0 6px;
   color: var(--muted);
@@ -1207,6 +1207,9 @@ body.dark-mode .export-services-note { color: #ff9b9b; }
 .settings-subtabs { display: flex; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .settings-subtabs button { min-height: 38px; padding: 0 14px; border-radius: 9px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 800; }
 .settings-subtabs button.active { background: #e3f1ef; color: var(--teal); }
+#currency-fields { display: grid; gap: 12px; margin: 12px 0; }
+#currency-fields label { font-size: 12px; }
+#currency-fields small { color: var(--muted); font-size: 11px; line-height: 1.6; }
 .settings-form { display: grid; gap: 12px; }
 .settings-section { display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 15px; background: #fff; padding: 16px; }
 .settings-section-heading { display: grid; gap: 4px; }
@@ -2363,7 +2366,7 @@ body.dark-mode .export-services-note { color: #ff9b9b; }
 .export-service-check input { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; accent-color: var(--teal); }
 .export-service-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; padding-inline-start: 19.5px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .export-meta-separator { color: var(--teal); font-weight: 800; }
-.export-syrian-price {
+.export-secondary-price {
   justify-self: center;
   color: #a66a17;
   font-size: 10px;
@@ -2755,11 +2758,11 @@ body.dark-mode .service-price-cell {
 }
 body.dark-mode .service-price-label { color: #aab8c5; }
 body.dark-mode .service-price { color: #7de0d3; }
-body.dark-mode .service-lira-cell {
+body.dark-mode .service-secondary-currency-cell {
   border-color: #76582a;
   background: #30291c;
 }
-body.dark-mode .service-lira-cell .service-price { color: #e6b85c; }
+body.dark-mode .service-secondary-currency-cell .service-price { color: #e6b85c; }
 body.dark-mode .empty-state {
   border-color: #2b3b49;
   background: #18232d !important;
@@ -2774,7 +2777,7 @@ body.dark-mode .empty-icon {
   box-shadow: 0 10px 24px rgba(0,0,0,.24);
 }
 body.dark-mode .export-service-row.is-selected { border-color: #3d7773; background: #193b3a; }
-body.dark-mode .export-syrian-price { color: #e6b85c; }
+body.dark-mode .export-secondary-price { color: #e6b85c; }
 body.dark-mode .export-price-modified {
   border-color: #4a9a93;
   background: linear-gradient(135deg, #23544f, #1b4441);

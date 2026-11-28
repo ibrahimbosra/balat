@@ -13,11 +13,11 @@ import {
 import { normalizeMeasurementUnits, type MeasurementUnit } from './measurement-units'
 
 export type BackupSettings = {
-  syriaEnabled: boolean
+  secondaryCurrencyEnabled: boolean
   exchangeRate: number
   darkMode: boolean
-  localCurrencyCode: string
-  localCurrencyName: string
+  secondaryCurrencySymbol: string
+  secondaryCurrencyName: string
   companyProfile: BackupCompanyProfile
   measurementUnits: MeasurementUnit[]
 }
@@ -106,14 +106,21 @@ const maxArchiveBytes = 80 * 1024 * 1024
 const maxJsonBytes = 64 * 1024 * 1024
 const firestoreBatchSize = 450
 const firestoreBatchByteLimit = 8 * 1024 * 1024
-const legacySettingsFields: (keyof BackupSettings)[] = [
+const legacySettingsFields = [
   'syriaEnabled',
   'exchangeRate',
   'darkMode',
   'localCurrencyCode',
   'localCurrencyName',
 ]
-const settingsFields: (keyof BackupSettings)[] = [...legacySettingsFields, 'companyProfile', 'measurementUnits']
+const currentSettingsFields: (keyof BackupSettings)[] = [
+  'secondaryCurrencyEnabled',
+  'exchangeRate',
+  'darkMode',
+  'secondaryCurrencySymbol',
+  'secondaryCurrencyName',
+]
+const settingsFields: (keyof BackupSettings)[] = [...currentSettingsFields, 'companyProfile', 'measurementUnits']
 
 declare const __APP_VERSION__: string
 
@@ -130,11 +137,11 @@ function normalizedSettings(value: unknown): BackupSettings {
   const exchangeRate = typeof data.exchangeRate === 'number' && Number.isFinite(data.exchangeRate) && data.exchangeRate > 0
     ? data.exchangeRate
     : 0
-  const localCurrencyCode = typeof data.localCurrencyCode === 'string' && data.localCurrencyCode.trim()
-    ? data.localCurrencyCode.trim().toUpperCase()
+  const secondaryCurrencySymbol = typeof data.secondaryCurrencySymbol === 'string' && data.secondaryCurrencySymbol.trim()
+    ? data.secondaryCurrencySymbol.trim().slice(0, 15)
     : ''
-  const localCurrencyName = typeof data.localCurrencyName === 'string' && data.localCurrencyName.trim()
-    ? data.localCurrencyName.trim()
+  const secondaryCurrencyName = typeof data.secondaryCurrencyName === 'string' && data.secondaryCurrencyName.trim()
+    ? data.secondaryCurrencyName.trim().slice(0, 40)
     : ''
   const companyData = isRecord(data.companyProfile) ? data.companyProfile : {}
   const text = (value: unknown, maxLength: number) =>
@@ -148,11 +155,13 @@ function normalizedSettings(value: unknown): BackupSettings {
     }).slice(0, 3)
     : []
   return {
-    syriaEnabled: data.syriaEnabled === true,
+    secondaryCurrencyEnabled: typeof data.secondaryCurrencyEnabled === 'boolean'
+      ? data.secondaryCurrencyEnabled
+      : data.syriaEnabled === true,
     exchangeRate,
     darkMode: data.darkMode === true,
-    localCurrencyCode,
-    localCurrencyName,
+    secondaryCurrencySymbol,
+    secondaryCurrencyName,
     companyProfile: {
       name: text(companyData.name, 100),
       offerings: text(companyData.offerings, 300),
@@ -315,7 +324,8 @@ function serializedBytes(value: unknown): Uint8Array {
 
 function appSettingsFromUserDocument(value: Record<string, unknown>): BackupSettings {
   const settings: Record<string, unknown> = {}
-  settingsFields.forEach((field) => {
+  const documentSettingsFields = new Set([...settingsFields, ...legacySettingsFields])
+  documentSettingsFields.forEach((field) => {
     if (value[field] !== undefined) settings[field] = value[field]
   })
   return normalizedSettings(settings)
@@ -769,7 +779,12 @@ export async function prepareRestorePlan(
     invoiceCounter,
     targetProductCount: targetProducts.size,
     targetCategoryCount: targetCategories.size,
-    targetSettingsCount: settingsFields.filter((field) => currentOwnerData[field] !== undefined).length,
+    targetSettingsCount: settingsFields.filter((field) =>
+      currentOwnerData[field] !== undefined
+      || (field === 'secondaryCurrencyEnabled' && currentOwnerData.syriaEnabled !== undefined)
+      || (field === 'secondaryCurrencySymbol' && currentOwnerData.localCurrencyCode !== undefined)
+      || (field === 'secondaryCurrencyName' && currentOwnerData.localCurrencyName !== undefined),
+    ).length,
     targetHasCloudinarySettings: targetCloudinary !== null,
     skippedProducts,
     skippedCategories,
@@ -855,6 +870,9 @@ export async function executeRestorePlan(
 
   const userRef = doc(db, 'users', plan.ownerId)
   const settingsUpdate: Record<string, unknown> = { ...plan.settingsToRestore }
+  for (const field of ['syriaEnabled', 'localCurrencyCode', 'localCurrencyName']) {
+    settingsUpdate[field] = deleteField()
+  }
   if (plan.mode === 'replace' && plan.backup.payload.invoiceCounter === null) {
     settingsUpdate.invoiceCounter = deleteField()
   } else if (plan.invoiceCounter !== null) {
@@ -890,6 +908,11 @@ export async function executeRestorePlan(
   for (const field of settingsFields) {
     if (canonicalJson(actualOwner[field]) !== canonicalJson(plan.settingsToRestore[field])) {
       throw operationError('لم يتم التحقق من استعادة إعدادات المستخدم.')
+    }
+  }
+  for (const field of ['syriaEnabled', 'localCurrencyCode', 'localCurrencyName']) {
+    if (actualOwner[field] !== undefined) {
+      throw operationError('لم يتم تنظيف إعدادات العملة القديمة بعد الاستعادة.')
     }
   }
   if (plan.mode === 'replace' && plan.backup.payload.invoiceCounter === null) {

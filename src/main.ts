@@ -17,6 +17,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getFirestore,
@@ -56,11 +57,11 @@ const appRoot = document.querySelector<HTMLDivElement>('#app')!
 type ServiceUnit = string
 
 type AppSettings = {
-  syriaEnabled: boolean
+  secondaryCurrencyEnabled: boolean
   exchangeRate: number
   darkMode: boolean
-  localCurrencyCode: string
-  localCurrencyName: string
+  secondaryCurrencySymbol: string
+  secondaryCurrencyName: string
   companyProfile: CompanyProfile
   measurementUnits: MeasurementUnit[]
 }
@@ -180,11 +181,11 @@ type MainSection = 'services' | 'customers' | 'invoices'
 type InvoiceStatusFilter = 'all' | 'paid' | 'partial' | 'unpaid'
 
 const defaultSettings: AppSettings = {
-  syriaEnabled: false,
+  secondaryCurrencyEnabled: false,
   exchangeRate: 0,
   darkMode: true,
-  localCurrencyCode: 'ليرة',
-  localCurrencyName: 'ليرة',
+  secondaryCurrencySymbol: '',
+  secondaryCurrencyName: '',
   companyProfile: { name: '', offerings: '', details: '', address: '', contacts: [] },
   measurementUnits: systemMeasurementUnits,
 }
@@ -265,18 +266,39 @@ function applyTheme(value: boolean) {
 }
 
 function safeSettings(value: unknown): AppSettings {
-  const data = typeof value === 'object' && value !== null ? value as Partial<AppSettings> : {}
+  const data = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
   return {
-    syriaEnabled: data.syriaEnabled === true,
+    secondaryCurrencyEnabled: typeof data.secondaryCurrencyEnabled === 'boolean'
+      ? data.secondaryCurrencyEnabled
+      : data.syriaEnabled === true,
     exchangeRate: typeof data.exchangeRate === 'number' && Number.isFinite(data.exchangeRate) && data.exchangeRate > 0
       ? data.exchangeRate
       : 0,
     darkMode: typeof data.darkMode === 'boolean' ? data.darkMode : true,
-    localCurrencyCode: 'ليرة',
-    localCurrencyName: 'ليرة',
+    secondaryCurrencySymbol: typeof data.secondaryCurrencySymbol === 'string' ? data.secondaryCurrencySymbol.trim().slice(0, 15) : '',
+    secondaryCurrencyName: typeof data.secondaryCurrencyName === 'string' ? data.secondaryCurrencyName.trim().slice(0, 40) : '',
     companyProfile: safeCompanyProfile(data.companyProfile),
     measurementUnits: normalizeMeasurementUnits(data.measurementUnits),
   }
+}
+
+function isSecondaryCurrencyConfigured() {
+  return settings.secondaryCurrencyEnabled
+    && Boolean(settings.secondaryCurrencyName.trim())
+    && Boolean(settings.secondaryCurrencySymbol.trim())
+    && Number.isFinite(settings.exchangeRate)
+    && settings.exchangeRate > 0
+}
+
+function secondaryCurrencyLabel() {
+  const name = settings.secondaryCurrencyName.trim()
+  const symbol = settings.secondaryCurrencySymbol.trim()
+  if (name && symbol) return `${name} (${symbol})`
+  return name || symbol || 'العملة الثانوية'
+}
+
+function formatSecondaryCurrency(value: number) {
+  return `${money(value)} ${secondaryCurrencyLabel()}`
 }
 
 function safeCompanyProfile(value: unknown): CompanyProfile {
@@ -364,7 +386,7 @@ function parseWorkService(id: string, data: Record<string, unknown>): WorkServic
     name,
     price,
     currencyCode: typeof data.currencyCode === 'string' && data.currencyCode.trim()
-      ? (data.currencyCode.trim().toUpperCase() === 'USD' ? 'USD' : 'ليرة')
+      ? (data.currencyCode.trim().toUpperCase() === 'USD' ? 'USD' : 'SECONDARY')
       : 'USD',
     unit,
     description: typeof data.description === 'string' ? data.description.trim() : '',
@@ -544,7 +566,9 @@ function parseInvoiceRecord(id: string, data: Record<string, unknown>): InvoiceR
       price: typeof item.price === 'string' ? item.price : (typeof item.price === 'number' ? String(item.price) : ''),
       unit: typeof item.unit === 'string' ? item.unit : '',
       unitCode,
-      currencyCode: typeof item.currencyCode === 'string' && item.currencyCode.trim() ? item.currencyCode.trim() : 'USD',
+      currencyCode: typeof item.currencyCode === 'string' && item.currencyCode.trim()
+        ? (item.currencyCode.trim().toUpperCase() === 'USD' ? 'USD' : 'SECONDARY')
+        : 'USD',
     }
   }) : []
   const discount: StoredInvoiceDiscount = data.discount && typeof data.discount === 'object'
@@ -857,12 +881,13 @@ function updateServicesShell() {
     .filter((service) => service.name.toLocaleLowerCase('ar').includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
   list.innerHTML = visible.length ? visible.map((service, index) => {
+    const secondaryCurrencyConfigured = isSecondaryCurrencyConfigured()
     const dollarPrice = service.currencyCode === 'USD'
       ? service.price
-      : settings.syriaEnabled && settings.exchangeRate > 0
+      : secondaryCurrencyConfigured
         ? service.price / settings.exchangeRate
         : Number.NaN
-    const liraPrice = !settings.syriaEnabled || settings.exchangeRate <= 0
+    const secondaryPrice = !secondaryCurrencyConfigured
       ? null
       : service.currencyCode === 'USD'
         ? service.price * settings.exchangeRate
@@ -879,9 +904,11 @@ function updateServicesShell() {
               <span class="service-price-label">السعر</span>
               <strong class="service-price">${Number.isFinite(dollarPrice) ? formatUsdAmount(dollarPrice) : 'غير متاح'}</strong>
             </span>
-            <span class="service-price-cell service-lira-cell">
-              <span class="service-price-label">السعر بالليرة السورية</span>
-              <strong class="service-price">${liraPrice === null ? 'الليرة غير مفعلة' : `${money(liraPrice)} ليرة`}</strong>
+            <span class="service-price-cell service-secondary-currency-cell">
+              <span class="service-price-label">السعر بـ${escapeHtml(settings.secondaryCurrencyName || 'العملة الثانوية')}</span>
+              <strong class="service-price">${secondaryPrice === null
+                ? (settings.secondaryCurrencyEnabled ? 'أكمل إعداد العملة الثانوية' : 'غير مفعّلة')
+                : `${money(secondaryPrice)} ${escapeHtml(settings.secondaryCurrencySymbol)}`}</strong>
             </span>
           </span>
         </button>
@@ -3611,33 +3638,60 @@ function accountPasswordError(error: unknown): string {
 function renderCurrencySettings(content: HTMLElement, element: HTMLElement) {
   content.innerHTML = `
     <h2>العملة</h2>
-    <label class="switch-row"><span>تفعيل الليرة السورية</span><input id="local-currency-enabled" type="checkbox" ${settings.syriaEnabled ? 'checked' : ''}><i></i></label>
-    <div id="currency-fields" class="${settings.syriaEnabled ? '' : 'hidden'}">
-      <label>سعر الصرف<input id="exchange-rate" type="number" min="0.000001" step="0.000001" value="${settings.exchangeRate || ''}" placeholder="15000"><small>1 $ = عدد الليرات</small></label>
+    <label class="switch-row"><span>تفعيل العملة الثانوية</span><input id="secondary-currency-enabled" type="checkbox" ${settings.secondaryCurrencyEnabled ? 'checked' : ''}><i></i></label>
+    <div id="currency-fields" class="${settings.secondaryCurrencyEnabled ? '' : 'hidden'}">
+      <label>اسم العملة<input id="secondary-currency-name" type="text" maxlength="40" value="${escapeHtml(settings.secondaryCurrencyName)}" placeholder="مثال: الدينار الأردني" required></label>
+      <label>رمز العملة<input id="secondary-currency-symbol" type="text" maxlength="15" value="${escapeHtml(settings.secondaryCurrencySymbol)}" placeholder="مثال: د.أ" required></label>
+      <label>سعر الصرف<input id="exchange-rate" type="number" min="0.000001" step="0.000001" value="${settings.exchangeRate || ''}" placeholder="أدخل سعر الصرف"><small>عدد وحدات العملة الثانوية مقابل دولار أمريكي واحد.</small></label>
     </div>
     <p class="modal-error" id="currency-error"></p>
     <button class="primary-button" id="save-currency">حفظ إعدادات العملة</button>`
-  const enabled = content.querySelector<HTMLInputElement>('#local-currency-enabled')!
+  const enabled = content.querySelector<HTMLInputElement>('#secondary-currency-enabled')!
+  const currencyName = content.querySelector<HTMLInputElement>('#secondary-currency-name')!
+  const currencySymbol = content.querySelector<HTMLInputElement>('#secondary-currency-symbol')!
+  const exchangeRateInput = content.querySelector<HTMLInputElement>('#exchange-rate')!
+  const error = content.querySelector<HTMLElement>('#currency-error')!
   enabled.addEventListener('change', () =>
     content.querySelector('#currency-fields')!.classList.toggle('hidden', !enabled.checked))
+  const currencyInputs = [currencyName, currencySymbol, exchangeRateInput]
+  currencyInputs.forEach((input) =>
+    input.addEventListener('input', () => { error.textContent = '' }))
   content.querySelector('#save-currency')!.addEventListener('click', async () => {
     if (!currentUser) return
-    const exchangeRate = Number(content.querySelector<HTMLInputElement>('#exchange-rate')!.value)
-    const error = content.querySelector<HTMLElement>('#currency-error')!
+    const name = currencyName.value.trim()
+    const symbol = currencySymbol.value.trim()
+    const exchangeRate = Number(exchangeRateInput.value)
+    if (enabled.checked && !name) {
+      error.textContent = 'أدخل اسم العملة الثانوية.'
+      currencyName.focus()
+      return
+    }
+    if (enabled.checked && !symbol) {
+      error.textContent = 'أدخل رمز العملة الثانوية.'
+      currencySymbol.focus()
+      return
+    }
     if (enabled.checked && (!Number.isFinite(exchangeRate) || exchangeRate <= 0)) {
       error.textContent = 'أدخل سعر صرف موجبًا.'
+      exchangeRateInput.focus()
       return
     }
     settings = {
       ...settings,
-      syriaEnabled: enabled.checked,
-      localCurrencyCode: 'ليرة',
-      localCurrencyName: 'ليرة',
+      secondaryCurrencyEnabled: enabled.checked,
+      secondaryCurrencyName: name,
+      secondaryCurrencySymbol: symbol,
       exchangeRate: enabled.checked ? exchangeRate : settings.exchangeRate,
     }
     saveCachedSettings(dataUserId, settings)
     try {
-      await setDoc(doc(db, 'users', dataUserId), settings, { merge: true })
+      await setDoc(doc(db, 'users', dataUserId), {
+        ...settings,
+        syriaEnabled: deleteField(),
+        localCurrencyCode: deleteField(),
+        localCurrencyName: deleteField(),
+      }, { merge: true })
+      renderActiveSection()
       element.remove()
     } catch (saveError) {
       error.textContent = friendlyError(saveError)
@@ -3672,11 +3726,11 @@ function renderBackupSettings(content: HTMLElement) {
     status.textContent = 'جارٍ إنشاء النسخة...'
     try {
       const archive = await createBackupArchive(db, dataUserId, currentUser.uid, {
-        syriaEnabled: settings.syriaEnabled,
+        secondaryCurrencyEnabled: settings.secondaryCurrencyEnabled,
         exchangeRate: settings.exchangeRate,
         darkMode: settings.darkMode,
-        localCurrencyCode: settings.localCurrencyCode,
-        localCurrencyName: settings.localCurrencyName,
+        secondaryCurrencySymbol: settings.secondaryCurrencySymbol,
+        secondaryCurrencyName: settings.secondaryCurrencyName,
         companyProfile: settings.companyProfile,
         measurementUnits: settings.measurementUnits,
       })
@@ -3852,7 +3906,9 @@ function drawInvoiceCompanyBranding(context: CanvasRenderingContext2D, width: nu
 }
 
 function invoiceCurrencyLabel(currencyCode: string) {
-  return currencyCode === 'USD' ? USD_CURRENCY_SYMBOL : currencyCode
+  if (currencyCode === 'USD') return USD_CURRENCY_SYMBOL
+  if (currencyCode === 'SECONDARY') return secondaryCurrencyLabel()
+  return currencyCode
 }
 
 function getFollowingInvoiceNumber(currentNumber: unknown) {
@@ -3889,7 +3945,7 @@ async function getNextInvoiceNumber(ownerId: string): Promise<string> {
 
 function invoicePriceInUsd(service: WorkService): number | null {
   if (service.currencyCode === 'USD') return service.price
-  if (!Number.isFinite(settings.exchangeRate) || settings.exchangeRate <= 0) return null
+  if (!isSecondaryCurrencyConfigured()) return null
   return Number((service.price / settings.exchangeRate).toFixed(2))
 }
 
@@ -4179,10 +4235,10 @@ async function exportServicesToImage(
 
         context.fillStyle = '#007d79'
         context.font = '800 18px "Cairo", sans-serif'
-        const currencyText = service.currencyCode === 'USD' ? '$'
-          : service.currencyCode === 'ليرة' ? 'ل.س'
-          : service.currencyCode
-        context.fillText(currencyText === '$' ? formatUsdAmount(exportPrice) : `${money(exportPrice)} ${currencyText}`, 115, y + 27)
+        const priceText = service.currencyCode === 'USD'
+          ? formatUsdAmount(exportPrice)
+          : formatSecondaryCurrency(exportPrice)
+        context.fillText(priceText, 115, y + 27)
       }
 
       const noteLines = exportNote && pageIndex === pageCount - 1
@@ -6506,10 +6562,13 @@ function renderExportDialog(options?: {
     const netElement = invoicePanel.querySelector<HTMLElement>('[data-invoice-net]')
     if (netElement) {
       netElement.innerHTML = totals.size
-        ? [...totals].map(([, total]) =>
-          `<span>${money(total)} $</span>${settings.syriaEnabled && settings.exchangeRate > 0
-            ? `<small>${money(total * settings.exchangeRate)} ليرة سورية</small>`
-            : ''}`).join('')
+        ? [...totals].map(([currencyCode, total]) => {
+          const currencyLabel = escapeHtml(invoiceCurrencyName(currencyCode))
+          const secondaryTotal = currencyCode === 'USD' && isSecondaryCurrencyConfigured()
+            ? `<small>${escapeHtml(formatSecondaryCurrency(total * settings.exchangeRate))}</small>`
+            : ''
+          return `<span>${money(total)} ${currencyLabel}</span>${secondaryTotal}`
+        }).join('')
         : '—'
       fitInvoiceSummaryText(netElement, 12, 6)
     }
@@ -6608,7 +6667,7 @@ function renderExportDialog(options?: {
       const checked = selected.has(service.id)
       const exportPrice = exportPrices.get(service.id) ?? service.price
       const isModified = modified.has(service.id) && exportPrice !== service.price
-      const liraExportPrice = settings.syriaEnabled && settings.exchangeRate > 0
+      const secondaryExportPrice = isSecondaryCurrencyConfigured()
         ? service.currencyCode === 'USD'
           ? exportPrice * settings.exchangeRate
           : exportPrice
@@ -6626,7 +6685,9 @@ function renderExportDialog(options?: {
           <div class="export-service-meta">
             <span>${escapeHtml(serviceUnitLabel(service.unit))}</span>
             <span class="export-meta-separator" aria-hidden="true">|</span>
-            <span>السعر الأساسي: ${money(service.price)} ${service.currencyCode === 'USD' ? '$' : escapeHtml(service.currencyCode)}</span>
+            <span>السعر الأساسي: ${service.currencyCode === 'USD'
+              ? `${money(service.price)} $`
+              : escapeHtml(formatSecondaryCurrency(service.price))}</span>
           </div>
           <div class="export-price-field">
             <span>سعر التصدير</span>
@@ -6638,7 +6699,7 @@ function renderExportDialog(options?: {
               </span>
               <button type="button" class="export-price-adjust export-price-decrease" data-export-adjust="decrease" data-service-id="${service.id}" aria-label="إنقاص السعر ربع $" ${checked ? '' : 'disabled'}>▼</button>
             </span>
-            ${liraExportPrice !== null ? `<span class="export-syrian-price">${money(liraExportPrice)} ليرة</span>` : ''}
+            ${secondaryExportPrice !== null ? `<span class="export-secondary-price">${escapeHtml(formatSecondaryCurrency(secondaryExportPrice))}</span>` : ''}
           </div>
           ${isModified ? '<span class="export-price-modified">معدّل</span>' : ''}
         </article>`
@@ -6667,10 +6728,10 @@ function renderExportDialog(options?: {
         exportPrices.set(id, value)
         if (value !== service.price) modified.add(id)
         else modified.delete(id)
-        const syrianPrice = input.closest<HTMLElement>('.export-service-row')?.querySelector<HTMLElement>('.export-syrian-price')
-        if (syrianPrice && settings.syriaEnabled && settings.exchangeRate > 0) {
-          const liraValue = service.currencyCode === 'USD' ? value * settings.exchangeRate : value
-          syrianPrice.textContent = `${money(liraValue)} ليرة`
+        const secondaryPrice = input.closest<HTMLElement>('.export-service-row')?.querySelector<HTMLElement>('.export-secondary-price')
+        if (secondaryPrice && isSecondaryCurrencyConfigured()) {
+          const secondaryValue = service.currencyCode === 'USD' ? value * settings.exchangeRate : value
+          secondaryPrice.textContent = formatSecondaryCurrency(secondaryValue)
         }
         summary.querySelector('[data-summary-modified] strong')!.textContent = String(modified.size)
         const row = input.closest<HTMLElement>('.export-service-row')
